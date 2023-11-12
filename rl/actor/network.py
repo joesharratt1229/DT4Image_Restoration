@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 from collections import OrderedDict
-from copy import deepcopy
-from typing import Optional, Callable, Dict, Tuple
+from typing import Optional, Dict, Tuple, Callable
 
 
 def config(depth: list
@@ -43,16 +42,17 @@ class ResidualBlock(nn.Module):
                         nn.ReLU()
                         )
         self.conv2 = nn.Sequential(
-                        nn.Conv2d(in_planes, out_planes, kernel_size = 3, 
-                        stride = stride, padding = 1, bias = False),
+                        nn.Conv2d(out_planes, out_planes, kernel_size = 3, 
+                                  stride = stride, padding = 1, bias = False),
                         bnorm(out_planes))
+    
         self.shortcut = nn.Sequential()
         if (stride != 1) or (in_planes != (out_planes * self.expansion)):
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, out_planes, kernel_size=1, stride = stride, padding = 1, bias = False),
+                nn.Conv2d(in_planes, out_planes, kernel_size=1, 
+                          stride = stride, padding = 1, bias = False),
                 bnorm(out_planes * self.expansion)
             )
-            
 
     def forward(self, 
                 x: torch.Tensor
@@ -62,7 +62,7 @@ class ResidualBlock(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-
+    
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -107,10 +107,8 @@ class Bottleneck(nn.Module):
         output += self.shortcut(x)
         output = F.relu(output)
         return output
+
         
-
-
-
 class Policy(nn.Module):
     _num_inputs = 7
     #Three determinisitc actions
@@ -126,10 +124,7 @@ class Policy(nn.Module):
                  depth: Dict) -> None:
         
         super(Policy, self).__init__()
-        block, layers = config(depth)
         self.action_bundle = action_bundle
-
-        self.in_planes = 64
         self.conv1 = nn.Sequential(nn.Conv2d(self._num_inputs, 
                                              64, 
                                              stride = 2, 
@@ -139,11 +134,18 @@ class Policy(nn.Module):
                                    nn.SyncBatchNorm(64),
                                    nn.ReLU())
         
+        block, layers = config(depth)
+        self.in_planes = 64
+
+
         self.layer1 = self._make_layer(block, 64, layers[0], stride = 2)
         self.layer2 = self._make_layer(block, 128, layers[1], stride = 2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride = 2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride = 2)
 
+        self._weight_init()
+
+        
         self.deterministic = nn.Sequential(
             nn.Linear(512, self.num_actions * action_bundle),
             nn.Sigmoid()
@@ -154,8 +156,8 @@ class Policy(nn.Module):
             nn.Softmax(dim = 1)
         )
 
-        self._weight_init()
-
+    
+    
     def _weight_init(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -182,10 +184,18 @@ class Policy(nn.Module):
 
         return nn.Sequential(*layers) 
     
+    
     @property
-    def adaptation_parameters(self
+    def _adaptation_parameters(self
                               ) -> torch.Parameter:
         return self.parameters()
+    
+
+    def create_copy(self
+                    ) -> nn.Module:
+        
+        #adapted_policy = deepcopy(self) -> move to solver
+        pass
     
     
     def mapping(self, actions: torch.Tensor) -> OrderedDict:
