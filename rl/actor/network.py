@@ -32,8 +32,10 @@ class ResidualBlock(nn.Module):
                  ) -> None:
         
         super(ResidualBlock, self).__init__()
-        if bnorm is None:
+        if (bnorm is None) and torch.cuda.device_count() != 0:
             bnorm = nn.SyncBatchNorm
+        else:
+            bnorm = nn.BatchNorm2d
 
         self.conv1 = nn.Sequential(
                         nn.Conv2d(in_planes, out_planes, kernel_size = 3, 
@@ -43,14 +45,14 @@ class ResidualBlock(nn.Module):
                         )
         self.conv2 = nn.Sequential(
                         nn.Conv2d(out_planes, out_planes, kernel_size = 3, 
-                                  stride = stride, padding = 1, bias = False),
+                                  stride = 1, padding = 1, bias = False),
                         bnorm(out_planes))
     
         self.shortcut = nn.Sequential()
         if (stride != 1) or (in_planes != (out_planes * self.expansion)):
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, out_planes, kernel_size=1, 
-                          stride = stride, padding = 1, bias = False),
+                nn.Conv2d(in_planes, self.expansion * out_planes, kernel_size=1, 
+                          stride = stride, bias = False),
                 bnorm(out_planes * self.expansion)
             )
 
@@ -59,7 +61,8 @@ class ResidualBlock(nn.Module):
                 ) -> torch.Tensor:
         out = self.conv1(x)
         out = self.conv2(out)
-        out += self.shortcut(x)
+        short = self.shortcut(x)
+        out += short
         out = F.relu(out)
         return out
     
@@ -75,8 +78,10 @@ class Bottleneck(nn.Module):
                  ) -> None:
         
         super(Bottleneck, self).__init__()
-        if bnorm is None:
+        if (bnorm is None) & (torch.cuda.device_count()) != 0:
             bnorm = nn.SyncBatchNorm
+        else:
+            bnorm = nn.BatchNorm2d
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False),
@@ -110,20 +115,28 @@ class Bottleneck(nn.Module):
 
         
 class Policy(nn.Module):
-    _num_inputs = 7
+    _num_inputs = 9
     #Three determinisitc actions
-    _num_actions = 3
+    _num_actions = 2
     _action_ranges_dictionary = {
         'mu': {'scale': 1, 'shift': 0},
-        'sigma_d': {'scale': 70 / 255, 'shift': 0},
-        'tau': {'scale': 2, 'shift': 0}
+        'sigma_d': {'scale': 70 / 255, 'shift': 0}
     }
 
     def __init__(self,
                  action_bundle: int,
-                 depth: Dict) -> None:
+                 depth: str
+                 ) -> None:
         
+
         super(Policy, self).__init__()
+
+        if (torch.cuda.device_count()) != 0:
+            bnorm = nn.SyncBatchNorm
+        else:
+            bnorm = nn.BatchNorm2d
+
+
         self.action_bundle = action_bundle
         self.conv1 = nn.Sequential(nn.Conv2d(self._num_inputs, 
                                              64, 
@@ -131,7 +144,7 @@ class Policy(nn.Module):
                                              kernel_size = 3,
                                              padding = 1, 
                                              bias = False),
-                                   nn.SyncBatchNorm(64),
+                                   bnorm(64),
                                    nn.ReLU())
         
         block, layers = config(depth)
@@ -147,7 +160,7 @@ class Policy(nn.Module):
 
         
         self.deterministic = nn.Sequential(
-            nn.Linear(512, self.num_actions * action_bundle),
+            nn.Linear(512, self._num_actions * action_bundle),
             nn.Sigmoid()
         )
 
@@ -156,14 +169,22 @@ class Policy(nn.Module):
             nn.Softmax(dim = 1)
         )
 
+        self.advantage_head = nn.Sequential(
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)
+        )
+
     
     
     def _weight_init(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal(m.weight, mode = 'fan_out')
+                nn.init.kaiming_normal_(m.weight, mode = 'fan_out')
             elif isinstance(m, nn.SyncBatchNorm):
-                nn.init.constant_(m.weight_, 1)
+                nn.init.constant_(m.weight, 1)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
 
@@ -187,7 +208,7 @@ class Policy(nn.Module):
     
     @property
     def _adaptation_parameters(self
-                              ) -> torch.Parameter:
+                              ) -> torch.ParameterDict:
         return self.parameters()
     
 
@@ -209,8 +230,8 @@ class Policy(nn.Module):
         output_dic = OrderedDict()
         
         for i, key in enumerate(self._action_ranges_dictionary):
-            output_dic[key] = actions[i] * (self._action_ranges_dictionary[key]['scale']/
-                                            self._action_ranges_dictionary[key]['shift'])
+            output_dic[key] = actions[i] * (self._action_ranges_dictionary[key]['scale'] \
+                                            + self._action_ranges_dictionary[key]['shift'])
             
         return output_dic
         
@@ -233,11 +254,13 @@ class Policy(nn.Module):
         x = F.adaptive_avg_pool2d(x, 1)
         x = x.view(x.size(0), -1)
 
+        advantage_pred = self.advantage_head(x)
+
         time_probs = self.probabilistic(x)
         deterministic_actions = self.deterministic(x)
 
         time_dist = Categorical(time_probs)
-        entropy = time_dist.entropy().unsqueeze()
+        entropy = time_dist.entropy().unsqueeze(dim = 1)
 
         if idx_stop is None:
             if train:
@@ -248,7 +271,7 @@ class Policy(nn.Module):
         action_logprob = time_dist.log_prob(idx_stop).unsqueeze(1)
         action = self.mapping(deterministic_actions)
 
-        return action, action_logprob, entropy
+        return action, action_logprob, entropy, advantage_pred
     
     
     def update_params_inner(self):
