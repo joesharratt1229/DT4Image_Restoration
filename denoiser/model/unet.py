@@ -41,7 +41,7 @@ class ConvBlock(nn.Sequential):
           super(ConvBlock, self).__init__()
           self.add_module('conv-0', ConvLayer(
               conv, in_channels, channels, k, s, padding= None,
-              dialation = 1, norm = None, act = act))
+              dilation = 1, norm = None, act = act))
           
           for i in range(1, num_layers):
               self.add_module('conv-{}'.format(i), ConvLayer(
@@ -133,18 +133,21 @@ class up(nn.Module):
 
         self.conv = ConvBlock(in_ch, out_ch)
 
-    def forward(self,
-                x1: torch.Tensor,
-                x2: torch.Tensor
-                ) -> torch.Tensor:
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
         
+        # input is CHW
         diffY = x2.size()[2] - x1.size()[2]
-        diffX = x2.size()[3] - x2.size()[3]
+        diffX = x2.size()[3] - x1.size()[3]
 
-        x1 = F.pad(x1, (diffX //2, diffX - diffX//2,
-                        diffY//2, diffY - diffY//2))
+        x1 = F.pad(x1, (diffX // 2, diffX - diffX//2,
+                        diffY // 2, diffY - diffY//2))
         
-        x = torch.cat([x2, x1], dim = 1)
+        # for padding issues, see 
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+
+        x = torch.cat([x2, x1], dim=1)
         x = self.conv(x)
         return x
     
