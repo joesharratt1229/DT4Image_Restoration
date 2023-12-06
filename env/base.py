@@ -9,6 +9,7 @@ from typing import Tuple
 from denoiser.base import UNetDenoiser2D
 from env.mixins import CSMRIMixin
 from utils.masks import generate_radial_mask, cartesian_mask, variable_density_mask
+from utils.transformations import complex2channel
 
 class PnPEnv(CSMRIMixin):
     mask_dictionary = {
@@ -23,12 +24,14 @@ class PnPEnv(CSMRIMixin):
         
         self.noise_mod = noise_model
         self.solver = solver
-        self._max_episode_step = 6
+        self.max_episode_step = 6
+        self.episode_num = 0
+        #self.done = 1
 
     def build_init_ob(self, 
-                        batch: torch.Tensor,
-                        task_dict: Dict
-                        )-> Tuple[torch.Tensor, Dict]:
+                    batch: torch.Tensor,
+                    task_dict: Dict
+                    )-> Tuple[torch.Tensor, Dict]:
         
         #mask_func = task_dict['mask']
         mask_str = task_dict['mask']
@@ -44,11 +47,27 @@ class PnPEnv(CSMRIMixin):
         
         mask = torch.from_numpy(mask).bool()
         policy_ob, env_ob = self._build_init_csmri_ob(batch, noise_level, mask)
+
+        self.episode_num = 0 
         return policy_ob, env_ob
-        
     
-    def build_next_ob(self,
-                     observation: Dict
-                     ) -> Tuple[torch.Tensor, Dict]:
+
+    def reset(self, 
+              observations: Dict
+              ) -> Tuple[torch.Tensor, Dict]:
+        
+        variables, y0, Aty0, mask, T, noise_map = observations['variables'], observations['y0'], observations['Aty0'], observations['mask'], observations['T'], observations['noise_map']
+        T = torch.zeros_like(noise_map)
+        observations['T'] = T
+        return (torch.cat([variables.real, complex2channel(y0), Aty0.real, mask, T, noise_map], dim = 1),
+                observations)
+
+        
+    def step(self,
+             observation: Dict
+             ) -> Tuple[torch.Tensor, Dict]:
+        self.episode_num += 1
         return self._build_next_csmri_ob(observation)
+    
+
 

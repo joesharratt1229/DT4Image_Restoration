@@ -22,8 +22,8 @@ class CSMRIMixin:
         Aty0 = ifft(y0)
 
         variables = self.solver.reset(Aty0)
-        T = torch.zeros_like(mask)
         noise_map = torch.ones_like(mask) * noise_level
+        T = torch.zeros_like(noise_map)
         env_ob = {
             'variables': variables,
             'y0': y0,
@@ -41,9 +41,7 @@ class CSMRIMixin:
                              ) -> Tuple[torch.Tensor, Dict]:
         
         variables, y0, Aty0, mask, T, noise_map = env_ob['variables'], env_ob['y0'], env_ob['Aty0'], env_ob['mask'], env_ob['T'], env_ob['noise_map']
-        T = T + 1/self._max_episode_step
-        env_ob['T'] = T
-        return (torch.cat([variables.real, complex2channel(y0), Aty0, mask, T, noise_map], dim = 1),
+        return (torch.cat([variables.real, complex2channel(y0), Aty0.real, mask, T, noise_map], dim = 1),
                 env_ob)
 
 

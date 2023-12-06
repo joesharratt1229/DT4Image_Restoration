@@ -10,7 +10,6 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 class UNetDenoiser2D(nn.Module):
     def __init__(self) -> None:
         super(UNetDenoiser2D, self).__init__()
-        print(CURRENT_DIR)
         self.check_path = os.path.join(CURRENT_DIR, 'weights/unet-nm.pt')
         net = UNet(2, 1)
         net.load_state_dict(torch.load(self.check_path, map_location = torch.device('cpu')))

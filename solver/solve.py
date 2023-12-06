@@ -16,7 +16,7 @@ class AdmmSolver:
         return torch.cat((x, z, u), dim=1)
     
     def __call__(self, observations, actions):
-        variables, y0, mask = observations['variables'], observations['y0'], observations['mask']
+        variables, y0, mask = observations
         x, z, u = torch.chunk(variables, chunks = 3, dim = 1)
 
         mask = mask.long()

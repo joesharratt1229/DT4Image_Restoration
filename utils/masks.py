@@ -72,7 +72,7 @@ def cartesian_mask(acc, sample_n=10, shape = (128, 128)):
     return mask
 
 
-def variable_density_mask(shape = (128, 128), max_density=1.0, min_density=0.1):
+def variable_density_mask(max_density=1.0, min_density=0.1, shape = (128, 128)):
     """
     Create a variable density mask for a 2D grid.
     

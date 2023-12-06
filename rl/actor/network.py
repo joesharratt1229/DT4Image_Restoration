@@ -32,7 +32,7 @@ class ResidualBlock(nn.Module):
                  ) -> None:
         
         super(ResidualBlock, self).__init__()
-        if (bnorm is None) and torch.cuda.device_count() != 0:
+        if (bnorm is None) and torch.cuda.device_count() > 0 :
             bnorm = nn.SyncBatchNorm
         else:
             bnorm = nn.BatchNorm2d
@@ -78,7 +78,7 @@ class Bottleneck(nn.Module):
                  ) -> None:
         
         super(Bottleneck, self).__init__()
-        if (bnorm is None) & (torch.cuda.device_count()) != 0:
+        if (bnorm is None) & (torch.cuda.device_count()) > 0:
             bnorm = nn.SyncBatchNorm
         else:
             bnorm = nn.BatchNorm2d
@@ -131,7 +131,7 @@ class Policy(nn.Module):
 
         super(Policy, self).__init__()
 
-        if (torch.cuda.device_count()) != 0:
+        if (torch.cuda.device_count()) > 0:
             bnorm = nn.SyncBatchNorm
         else:
             bnorm = nn.BatchNorm2d
@@ -167,12 +167,6 @@ class Policy(nn.Module):
         self.probabilistic = nn.Sequential(
             nn.Linear(512, 2),
             nn.Softmax(dim = 1)
-        )
-
-        self.advantage_head = nn.Sequential(
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1)
         )
 
     
@@ -254,8 +248,6 @@ class Policy(nn.Module):
         x = F.adaptive_avg_pool2d(x, 1)
         x = x.view(x.size(0), -1)
 
-        advantage_pred = self.advantage_head(x)
-
         time_probs = self.probabilistic(x)
         deterministic_actions = self.deterministic(x)
 
@@ -270,9 +262,9 @@ class Policy(nn.Module):
 
         action_logprob = time_dist.log_prob(idx_stop).unsqueeze(1)
         action = self.mapping(deterministic_actions)
+        action['idx_stop'] = idx_stop
 
-        return action, action_logprob, entropy, advantage_pred
-    
+        return action, action_logprob, entropy
     
     def update_params_inner(self):
         pass
