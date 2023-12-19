@@ -6,6 +6,11 @@ from collections import OrderedDict
 from typing import Optional, Dict, Tuple, Callable
 
 
+if torch.cuda.device_count() > 1:
+    norm = nn.SyncBatchNorm
+else:
+    norm = nn.BatchNorm2d
+
 def config(depth: list
            ) -> Tuple:
     depth_lst = [18, 34, 50, 101, 152]
@@ -27,33 +32,28 @@ class ResidualBlock(nn.Module):
     def __init__(self, 
                  in_planes: int,
                  out_planes: int, 
-                 stride: int,
-                 bnorm: Optional[Callable[..., nn.Module]] = None
+                 stride: int
                  ) -> None:
         
         super(ResidualBlock, self).__init__()
-        if (bnorm is None) and torch.cuda.device_count() > 0 :
-            bnorm = nn.SyncBatchNorm
-        else:
-            bnorm = nn.BatchNorm2d
 
         self.conv1 = nn.Sequential(
                         nn.Conv2d(in_planes, out_planes, kernel_size = 3, 
                         stride = stride, padding = 1, bias = False),
-                        bnorm(out_planes),
+                        norm(out_planes),
                         nn.ReLU()
                         )
         self.conv2 = nn.Sequential(
                         nn.Conv2d(out_planes, out_planes, kernel_size = 3, 
                                   stride = 1, padding = 1, bias = False),
-                        bnorm(out_planes))
+                        norm(out_planes))
     
         self.shortcut = nn.Sequential()
         if (stride != 1) or (in_planes != (out_planes * self.expansion)):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion * out_planes, kernel_size=1, 
                           stride = stride, bias = False),
-                bnorm(out_planes * self.expansion)
+                norm(out_planes * self.expansion)
             )
 
     def forward(self, 
@@ -73,29 +73,25 @@ class Bottleneck(nn.Module):
     def __init__(self, 
                  in_planes: int, 
                  out_planes: int, 
-                 stride: int,
-                 bnorm: Optional[Callable[..., nn.Module]]
+                 stride: int
                  ) -> None:
         
         super(Bottleneck, self).__init__()
-        if (bnorm is None) & (torch.cuda.device_count()) > 0:
-            bnorm = nn.SyncBatchNorm
-        else:
-            bnorm = nn.BatchNorm2d
+
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False),
-            bnorm(out_planes),
+            norm(out_planes),
             nn.ReLU())
         
         self.conv2 = nn.Sequential(
             nn.Conv2d(out_planes, out_planes, kernel_size=1, bias=False),
-            bnorm(out_planes),
+            norm(out_planes),
             nn.ReLU())
         
         self.conv3 = nn.Sequential(
             nn.Conv2d(out_planes, self.expansion * out_planes, kernel_size=1, bias=False),
-            bnorm(out_planes))
+            norm(out_planes))
         
         self.shortcut = nn.Sequential()
         if (stride) != 1 or (in_planes != self.expansion * out_planes):
@@ -131,11 +127,6 @@ class Policy(nn.Module):
 
         super(Policy, self).__init__()
 
-        if (torch.cuda.device_count()) > 0:
-            bnorm = nn.SyncBatchNorm
-        else:
-            bnorm = nn.BatchNorm2d
-
 
         self.action_bundle = action_bundle
         self.conv1 = nn.Sequential(nn.Conv2d(self._num_inputs, 
@@ -144,7 +135,7 @@ class Policy(nn.Module):
                                              kernel_size = 3,
                                              padding = 1, 
                                              bias = False),
-                                   bnorm(64),
+                                   norm(64),
                                    nn.ReLU())
         
         block, layers = config(depth)
@@ -156,7 +147,7 @@ class Policy(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride = 2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride = 2)
 
-        self._weight_init()
+        #self._weight_init()
 
         
         self.deterministic = nn.Sequential(
@@ -252,7 +243,7 @@ class Policy(nn.Module):
         deterministic_actions = self.deterministic(x)
 
         time_dist = Categorical(time_probs)
-        entropy = time_dist.entropy().unsqueeze(dim = 1)
+        entropy = time_dist.entropy().unsqueeze(1)
 
         if idx_stop is None:
             if train:
@@ -263,7 +254,6 @@ class Policy(nn.Module):
         action_logprob = time_dist.log_prob(idx_stop).unsqueeze(1)
         action = self.mapping(deterministic_actions)
         action['idx_stop'] = idx_stop
-
         return action, action_logprob, entropy
     
     def update_params_inner(self):
