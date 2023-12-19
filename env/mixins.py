@@ -32,6 +32,8 @@ class CSMRIMixin:
             'T': T,
             'noise_map': noise_map
         }
+
+        self.last_metric = self._compute_metric(variables.real, y0)
         return (torch.cat([variables.real, complex2channel(y0), Aty0.real, mask, T, noise_map], dim = 1),
                 env_ob)
                 
