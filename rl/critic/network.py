@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.utils.weight_norm as weightNorm
 from typing import Dict, Optional, Callable
 
 def cfg(depth):
@@ -42,11 +41,11 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
 
 
-        self.conv1 = weightNorm(nn.Conv2d(in_planes, out_planes, kernel_size = 3, 
+        self.conv1 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(in_planes, out_planes, kernel_size = 3, 
                                              stride = stride, padding = 1, bias = False))
         
-        self.conv2 = weightNorm(nn.Conv2d(out_planes, out_planes, kernel_size = 3, 
-                                          stride = stride, padding = 1, bias = False))
+        self.conv2 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(out_planes, out_planes, kernel_size = 3, 
+                                                                           stride = 1, padding = 1, bias = False))
 
     
         
@@ -56,8 +55,8 @@ class ResidualBlock(nn.Module):
         
         self.shortcut = nn.Sequential()
         if (stride != 1) or (in_planes != (out_planes * self.expansion)):
-            self.shortcut = weightNorm(nn.Conv2d(in_planes, out_planes, kernel_size=1, 
-                                      stride = stride, padding = 1, bias = False))
+            self.shortcut = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(in_planes, self.expansion * out_planes, kernel_size=1, 
+                                      stride = stride, bias = False))
 
     def forward(self, x):
         out = self.relu_1(self.conv1(x))
@@ -81,15 +80,14 @@ class Bottleneck(nn.Module):
         if bnorm is None:
             bnorm = nn.SyncBatchNorm
 
-        self.conv1 = weightNorm(nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False))
+        self.conv1 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(in_planes, out_planes, kernel_size=3, bias=False))
             
         
         
-        self.conv2 = weightNorm(nn.Conv2d(out_planes, out_planes, kernel_size=1, bias=False))
+        self.conv2 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(out_planes, out_planes, kernel_size=3, bias=False))
         
         
-        self.conv3 = weightNorm(nn.Conv2d(out_planes, self.expansion * out_planes, 
-                                          kernel_size=1, bias=False))
+        self.conv3 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(out_planes, self.expansion * out_planes, kernel_size=1, bias=False))
 
         
         
@@ -99,7 +97,7 @@ class Bottleneck(nn.Module):
         
         self.shortcut = nn.Sequential()
         if (stride) != 1 or (in_planes != self.expansion * out_planes):
-            self.shortcut = weightNorm(
+            self.shortcut = torch.nn.utils.parametrizations.weight_norm(
                 nn.Conv2d(in_planes, 
                           self.expansion* out_planes, 
                           kernel_size=1,
@@ -120,18 +118,18 @@ class Bottleneck(nn.Module):
 
 class Critic(nn.Module):
     #need to check this
-    _num_inputs = 4
+    _num_inputs = 9
 
     def __init__(self,
-                 num_inputs: int,
                  num_outputs: int,
                  depth: Dict,
                  ) -> None:
         
         super(Critic, self).__init__()
         block, num_blocks = cfg(depth)
+        self.in_planes = 64
 
-        self.conv1 = weightNorm(nn.Conv2d(self._num_inputs, 
+        self.conv1 = torch.nn.utils.parametrizations.weight_norm(nn.Conv2d(self._num_inputs, 
                                           self.in_planes,
                                           stride = 2,
                                           kernel_size = 3,
@@ -146,13 +144,13 @@ class Critic(nn.Module):
         self.fc = nn.Linear(512, num_outputs)
         self.relu_1 = TRelu()
 
-        self._weight_init()
+        #self._weight_init()
 
     
     def _weight_init(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal(m.weight, mode = 'fan_out')
+                nn.init.kaiming_normal_(m.weight, mode = 'fan_out')
             elif isinstance(m, nn.SyncBatchNorm):
                 nn.init.constant_(m.weight_, 1)
             elif isinstance(m, nn.Linear):
@@ -180,14 +178,16 @@ class Critic(nn.Module):
                 x: torch.Tensor
                 ) -> torch.Tensor:
         
-        out = self.relu(self.conv1(x))
+        B = x.shape[0]
+        
+        out = self.relu_1(self.conv1(x))
 
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
         out = self.layer4(out)
         out = F.adaptive_avg_pool2d(out, 1)
-        out = out.view(out.size(x.size(0), -1))
+        out = out.view(B, -1)
         out = self.fc(out)
         return out
 
