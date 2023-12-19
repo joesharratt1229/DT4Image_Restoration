@@ -19,13 +19,18 @@ class ReplayBuffer:
         self.buffer.append(ob)
         return
     
-    def sample(self, batch_size: int = 8) -> Dict:
+    def sample(self, batch_size: int = 48) -> Dict:
         indices = np.random.choice(range(0,self.__len__()), 
                                    batch_size,
                                    replace = False)
         
         variables, y0, Aty0, mask, T, noise_map = zip(*[self.buffer[idx] for idx in indices])
-        print(noise_map.shape)
+        variables = torch.stack(variables, dim = 0)
+        y0 = torch.stack(y0, dim = 0)
+        Aty0 = torch.stack(Aty0, dim = 0)
+        mask = torch.stack(mask, dim  = 0)
+        T = torch.stack(T, dim = 0)
+        noise_map = torch.stack(noise_map, dim = 0)
         env_dict = {'variables': variables, 'y0': y0, 'Aty0': Aty0, 
                       'mask': mask, 'T': T, 'noise_map': noise_map}
         
@@ -39,12 +44,9 @@ class MetaReplayBuffer:
     def __init__(self) -> None:
         self.buffers = {}
         for task_index in range(len(self._tasks)):
-            self.buffers[task_index] = ReplayBuffer(capacity=120)
+            self.buffers[task_index] = ReplayBuffer(capacity=240)
 
     def __len__(self) -> int:
-        print(self.buffers[0].__len__())
-        print(self.buffers[1].__len__())
-        print(self.buffers[2].__len__())
         total_length = sum(len(self.buffers[task_index]) for task_index in self.buffers.keys())
         return total_length
     
@@ -55,7 +57,10 @@ class MetaReplayBuffer:
             observations = self.buffers[task_index].sample()
         else:
             task_index = np.random.randint(0, len(self._tasks))
-            observations = self.buffers[task_index].sample()
+            try:
+                observations = self.buffers[task_index].sample()
+            except ValueError as e:
+                return self.sample()
 
         return observations, task_index
     
