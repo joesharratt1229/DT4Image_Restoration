@@ -22,7 +22,7 @@ class CSMRIMixin:
         Aty0 = ifft(y0)
 
         variables = self.solver.reset(Aty0)
-        noise_map = torch.ones_like(mask) * noise_level
+        noise_map = torch.ones_like(mask) * noise_level.real
         T = torch.zeros_like(noise_map)
         env_ob = {
             'variables': variables,

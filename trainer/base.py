@@ -58,7 +58,7 @@ class MetaTrainer(nn.Module):
 
         noise_mod = ContinuousNoise()
             
-        self.replay_buffer = MetaReplayBuffer()
+        self.replay_buffer = MetaReplayBuffer(batch_size, self.device)
         self.critic = Critic(num_outputs = 1, depth = 18).float().to(self.device)
         self.actor = Policy(5, depth = 18).float().to(self.device)
         self.env = PnPEnv(noise_model=noise_mod, solver = AdmmSolver())
@@ -82,7 +82,7 @@ class MetaTrainer(nn.Module):
     @property
     def _tasks(self):
          return {
-              'sampling_strategy': ['cartesian', 'variable_density'],
+              'sampling_strategy': ['radial', 'cartesian', 'variable_density'],
               'noise_level_range': [5, 20],
               'acceleration_range': range(4, 10, 2),
               'density_range': {'min_density': [0.1, 0.5],
@@ -123,7 +123,7 @@ class MetaTrainer(nn.Module):
         sampling_strategy = random.choice(tasks['sampling_strategy'])
         noise_level = np.random.uniform(tasks['noise_level_range'][0], tasks['noise_level_range'][1])
         
-        if sampling_strategy == 'density':
+        if sampling_strategy == 'variable_density':
             min_density = np.random.uniform(*tasks['density_range']['min_density'])
             max_density = np.random.uniform(*tasks['density_range']['max_density'])
             task_dict = {'mask': sampling_strategy, 'noise_level': noise_level, 
@@ -250,8 +250,6 @@ class MetaTrainer(nn.Module):
                     self.actor.zero_grad()
                     policy_loss.backward(retain_graph = True)
                     nn.utils.clip_grad.clip_grad_norm_(self.actor.parameters(), 2000)
-                    for param in self.actor.parameters():
-                        print(param.grad)
                     self.actor_optim.step()
 
                     #potentially introduce override

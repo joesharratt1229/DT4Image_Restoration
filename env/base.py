@@ -14,7 +14,7 @@ from utils.transformations import complex2channel
 
 class PnPEnv(CSMRIMixin):
     mask_dictionary = {
-        #'radial': generate_radial_mask,
+        'radial': generate_radial_mask,
         'cartesian': cartesian_mask,
         'variable_density': variable_density_mask
     }
@@ -27,7 +27,7 @@ class PnPEnv(CSMRIMixin):
         self.solver = solver
         self.max_episode_step = 6
         self.episode_num = 0
-        #self.done = 1
+        self.done = 1
 
     def build_init_ob(self, 
                     batch: torch.Tensor,

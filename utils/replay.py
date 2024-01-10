@@ -8,9 +8,11 @@ Experience = collections.namedtuple(
 )
 
 class ReplayBuffer:
-    def __init__(self, capacity: int) -> None:
+    def __init__(self, capacity: int, batch_size = 8, device = torch.device('cpu')) -> None:
         #efficient operations -> adding from both ends
         self.buffer = collections.deque(maxlen = capacity)
+        self.batch_size = batch_size
+        self.device = device
 
     def __len__(self) -> int:
         return len(self.buffer)
@@ -19,18 +21,18 @@ class ReplayBuffer:
         self.buffer.append(ob)
         return
     
-    def sample(self, batch_size: int = 48) -> Dict:
+    def sample(self) -> Dict:
         indices = np.random.choice(range(0,self.__len__()), 
-                                   batch_size,
+                                   self.batch_size,
                                    replace = False)
         
         variables, y0, Aty0, mask, T, noise_map = zip(*[self.buffer[idx] for idx in indices])
-        variables = torch.stack(variables, dim = 0)
-        y0 = torch.stack(y0, dim = 0)
-        Aty0 = torch.stack(Aty0, dim = 0)
-        mask = torch.stack(mask, dim  = 0)
-        T = torch.stack(T, dim = 0)
-        noise_map = torch.stack(noise_map, dim = 0)
+        variables = torch.stack(variables, dim = 0).to(self.device)
+        y0 = torch.stack(y0, dim = 0).to(self.device)
+        Aty0 = torch.stack(Aty0, dim = 0).to(self.device)
+        mask = torch.stack(mask, dim  = 0).to(self.device)
+        T = torch.stack(T, dim = 0).to(self.device)
+        noise_map = torch.stack(noise_map, dim = 0).to(self.device)
         env_dict = {'variables': variables, 'y0': y0, 'Aty0': Aty0, 
                       'mask': mask, 'T': T, 'noise_map': noise_map}
         
@@ -41,10 +43,13 @@ class ReplayBuffer:
 class MetaReplayBuffer:
     _tasks = ['radial', 'cartesian', 'variable_density']
 
-    def __init__(self) -> None:
+    def __init__(self, batch_size, device) -> None:
         self.buffers = {}
         for task_index in range(len(self._tasks)):
-            self.buffers[task_index] = ReplayBuffer(capacity=240)
+            self.buffers[task_index] = ReplayBuffer(capacity=96, 
+                                                    batch_size = batch_size, 
+                                                    device = device)
+
 
     def __len__(self) -> int:
         total_length = sum(len(self.buffers[task_index]) for task_index in self.buffers.keys())
