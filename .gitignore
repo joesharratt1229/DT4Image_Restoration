@@ -1,3 +1,4 @@
 *cpython*
 *DS_STORE*
 evaluation/denoiser/weights/unet-nm.pt
+*pycache*
