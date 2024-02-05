@@ -15,8 +15,3 @@ def ifft(img: torch.Tensor
     img_new = torch.fft.fftshift(img_new, dim = (-2, -1))
     return img_new
 
-def complex2channel(img):
-        B, C, H, W = img.shape
-        img = torch.view_as_real(img).contiguous()
-        img = img.view(B, 2 * C, H, W)
-        return img

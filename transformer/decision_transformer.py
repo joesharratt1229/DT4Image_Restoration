@@ -27,7 +27,6 @@ import math
 from collections import OrderedDict
 
 
-
 class CausalAttention(nn.Module):
     def __init__(self, config) -> None:
         
@@ -143,6 +142,10 @@ class DecisionTransformer(nn.Module):
 
         self.apply(self._init_weights)
 
+        self.action_range = OrderedDict({'sigma_d': {'scale': 70 / 255, 'shift': 0},
+                                        'mu': {'scale': 1, 'shift': 0},
+                                         'T': {'scale': 1, 'shift': 0}  })
+
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             module.weight.data.normal_(mean = 0.0, std = 0.02)
@@ -201,20 +204,17 @@ class DecisionTransformer(nn.Module):
         return optimizer
     
 
-    def forward(self, actions, rtg, states, T, task, target_masks): 
+    def forward(self, rtg, states, T, actions = None): 
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
-        #task (batch, 1, 1)
-        #states, block_size, (3 * 128 * 128)
+        #T (batch, block_size, 1)
+        #states (batch, block_size, (3 * 128 * 128)
 
         #time_embeddings = self.embed_time(T)
-        #task_embeddings = self.embed_task(task)
 
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) #+ time_embeddings + task_embeddings
         state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).type(torch.float32).contiguous())# + time_embeddings + task_embeddings
-
-        task_embedding = self.embed_task(task)
         
         if actions is not None:
             action_embeddings = self.embed_action(actions)
@@ -247,10 +247,6 @@ class DecisionTransformer(nn.Module):
             pred_actions = self.predict_action(x[:, 1:, :])
 
         pred_actions, action_dict = self._transform_actions(pred_actions)
-        pred_actions = torch.mul(pred_actions, target_masks)
-
-        #if targets is not None:
-        #    loss = F.mse_loss(pred_actions, targets)
         
         return action_dict, pred_actions
         
@@ -271,14 +267,10 @@ class DecisionTransformer(nn.Module):
 class DecisionTransformerConfig:
     dropout = 0.1
     embd_dropout = 0.1
-    batch_size = 32
+    #batch_size = 32
     embed_dim = 128
     n_heads = 8
-    block_size = 8
     action_dim = 3
-    #learning_rate = 6e-4
-    #beta = (0.09, 0.95)
-    #weight_decay = 0.1
     max_timestep = 30
     n_blocks = 8
 
