@@ -14,12 +14,13 @@ class PnPEnv:
 
     def reset(self, data, ddp, gpu_id):
         #data ()
-        x = data['x0'].reshape(1, 128, 128, 2)
+        x = torch.from_numpy(data['x0']).reshape(1, 1, 128, 128, 2).contiguous()
         x = torch.view_as_complex(x)
-        z = x.clone.detach()
+        z = x.clone().detach()
         u = torch.zeros_like(x)
-        mask = torch.from_numpy(data['mask'])
-        y0 = torch.view_as_complex(torch.from_numpy(data['y0']))
+        mask = torch.from_numpy(data['mask'].reshape(1, 1, 128, 128)).contiguous().to(torch.bool)
+        y0 = torch.from_numpy(data['y0']).contiguous()
+        y0 = torch.view_as_complex(y0)
         gt = torch.from_numpy(data['gt'])
         if ddp:
             x, z, u, mask, y0, gt = x.to(gpu_id), z.to(gpu_id), u.to(gpu_id), mask.to(gpu_id), y0.to(gpu_id), gt.to(gpu_id)
@@ -30,12 +31,12 @@ class PnPEnv:
         T, mu, sigma_d = action_dict['T'], action_dict['mu'], action_dict['sigma_d']
         x, y0, z, u, mask, gt = states['x'], states['y0'], states['z'], states['u'], states['mask'], states['gt']
 
-        temp_var = z - u
+        temp_var = (z - u)
         x = self.denoiser(temp_var.real, sigma_d)
         z = fft(x + u)
         _mu = mu.view(1, 1, 1, 1)
-        temp = ((_mu, z.clone()) + y0)/(1+ _mu)
-        z[mask, :] = temp[mask, :]
+        temp = ((_mu * z.clone()) + y0)/(1+ _mu)
+        z[mask] = temp[mask]
         z = ifft(z)
 
         u = u + x - z
@@ -45,8 +46,7 @@ class PnPEnv:
         else:
             done = False
 
-        
-        reward = self.compute_reward(x.real, gt)
+        reward = self.compute_reward(x.real.squeeze(dim = 0), gt)
         states['x'] = x
         states['z'] = z
         states['u'] = u 
@@ -70,7 +70,7 @@ class PnPEnv:
     def compute_reward(x, y0):
         mse = torch.mean(F.mse_loss(x, y0, reduction = 'none'))
         psnr = 10 * torch.log10((1**2)/mse)
-        return psnr.unsqueeze()
+        return psnr.unsqueeze(dim = 0)
 
 
         

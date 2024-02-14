@@ -143,9 +143,9 @@ class UNetDenoiser2D(torch.nn.Module):
             ckpt_path = os.path.join(CURRENT_DIR, 'pretrained', 'unet-nm.pt')
             if not os.path.exists(ckpt_path):
                 raise ValueError('Default ckpt not found, you have to provide a ckpt path')
-            
+        map_location = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')  
         net = UNet(2, 1)
-        net.load_state_dict(torch.load(ckpt_path))
+        net.load_state_dict(torch.load(ckpt_path, map_location=map_location))
         net.eval()
         for param in net.parameters():
             param.requires_grad = False

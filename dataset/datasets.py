@@ -14,7 +14,7 @@ import h5py
 #STATE_DIR = ''
 #EVALUATION_DIR = ''
 
-concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shapes[1:])), dtype = x.dtype)], dim = 0)
+concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
     def __init__(self, block_size, rtg_scale, data_dir, action_dim) -> None:
@@ -92,6 +92,7 @@ class TrainingDataset(BaseDataset):
                     index: int
                     ) -> torch.Tensor:
         #TODO tokenizer for the task
+        block_size = self.block_size//3
         traj_name = self._training_dictionary_dir[index]
         traj_path = os.path.join(self._training_dictionary_dir, traj_name)
         file_index = int(traj_name.split('_')[1].split('.')[0])
@@ -102,18 +103,18 @@ class TrainingDataset(BaseDataset):
         traj_len = len(traj_dict['state_path'])
         traj_dict['Actions']['T'] = [value if index % 5 == 4 else 0 for index, value in enumerate(traj_dict['Actions']['T'])]
 
-        if traj_len >= self.block_size:
-            start = np.random.randint(0, traj_len - self.block_size)
+        if traj_len >= block_size:
+            start = np.random.randint(0, traj_len - block_size)
 
-            actions = self._get_actions(traj_dict['actions'], start, start + self.block_size)
-            rtg = traj_dict['rtg'][start: start + self.block_size]
+            actions = self._get_actions(traj_dict['actions'], start, start + block_size)
+            rtg = traj_dict['rtg'][start: start + block_size]
             rtg = rtg/self.rtg_scale
             rtg = torch.from_numpy(rtg).reshape(-1, 1)
-            timesteps = torch.arange(start, start + self.block_size)
-            states = self._get_states(file_index, start, start + self.block_size)
-            traj_masks = torch.ones(self.block_size)
+            timesteps = torch.arange(start, start + block_size)
+            states = self._get_states(file_index, start, start + block_size)
+            traj_masks = torch.ones(block_size)
         else:
-            padding_len = self.block_size - traj_len
+            padding_len = block_size - traj_len
             concat_pad = lambda x, padding_len: torch.cat([x, 
                                               torch.zeros(([padding_len] + 
                                                            list(x.shapes[1:])),
@@ -127,7 +128,7 @@ class TrainingDataset(BaseDataset):
                                     torch.zeros(padding_len)],
                                     dim = 0)
             states = self._get_states(file_index, 0, actions.shape[0], pad = padding_len)
-            timesteps = torch.arange(start = 0, end = self.block_size)
+            timesteps = torch.arange(start = 0, end = block_size)
         
         #timesteps = timesteps/self.timestep_max
         return states, actions, rtg, traj_masks, timesteps
@@ -147,6 +148,7 @@ class EvaluationDataset(BaseDataset):
         return len(os.listdir(self.datadir))
     
     def __getitem__(self, index):
+        block_size = self.block_size//3
         fn = self.fns[index]
         mat = loadmat(os.path.join(self.data_dir, fn))
 
@@ -157,25 +159,16 @@ class EvaluationDataset(BaseDataset):
         states = torch.cat([x, z, u], dim = 0).view(1, -1)
         rtg = self.rtg_target/self.rtg_scale
         rtg = torch.Tensor([rtg]).reshape(1, 1)
-        T= torch.zeros((1, 1))
-        padding_length = self.block_size - 1
-
-        #(block size, 3*128*128)
-        states = concat_pad(states, padding_length)
-        #block size, 1
-        rtg = concat_pad(rtg, padding_length)
-        T = concat_pad(T, padding_length)
-        actions = torch.zeros((self.block_size, self.action_dim))
-        return (states, rtg, T, actions), mat
+        actions = torch.zeros((self.action_dim))
+        return (states, rtg, actions), mat
     
     def get_eval_obs(self, index):
         policy_inputs, mat = self.__getitem__(index)
-        states, rtg, T, actions = policy_inputs
+        states, rtg, actions = policy_inputs
         states = states.unsqueeze(dim = 0)
-        rtg = states.unsqueeze(dim = 0)
-        T = states.unsqueeze(dim = 0)
+        rtg = rtg.unsqueeze(dim = 0)
         actions = actions.unsqueeze(dim = 0)
-        return (states, rtg, T, actions), mat
+        return (states, rtg, actions), mat
 
         
 

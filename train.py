@@ -81,6 +81,8 @@ class Trainer:
                  model: torch.nn.Module,
                  train_config,
                  action_dim: int,
+                 max_timesteps,
+                 context_length,
                  train_data_loader : DataLoader,
                  optimizer: torch.optim,
                  save_every: int,
@@ -91,6 +93,9 @@ class Trainer:
         
         self.config = train_config
         self.optimizer = optimizer
+        self.action_dim = action_dim
+        self.max_timesteps = max_timesteps
+        self.context_length = context_length
         self.ddp = ddp
         if ddp:
             self.gpu_id = gpu_id
@@ -108,6 +113,20 @@ class Trainer:
         self.train_data_loader = train_data_loader
         self.save_every = save_every
         self.env = env
+
+    @staticmethod
+    def _get_latest_action(action_dict, actions_preds, index):
+        if index>=3:
+            slice_index = -1
+        else:
+            slice_index = index
+        
+        actions_preds = actions_preds[0][slice_index]
+        
+        action_dict['T'] = action_dict['T'][0][slice_index]
+        action_dict['mu'] = action_dict['mu'][0][slice_index]
+        action_dict['sigma_d'] = action_dict['sigma_d'][0][slice_index]
+        return action_dict, actions_preds
 
 
     def _run_batch(self, trajectory):
@@ -132,29 +151,49 @@ class Trainer:
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
         max_step = 30
         policy_inputs, mat = self.evaluation.get_eval_obs(index = 0)
-        eval_states, eval_rtg, eval_T, eval_actions = policy_inputs
+        states, rtg, actions = policy_inputs
         if self.ddp:
-            eval_states, eval_rtg, eval_T, eval_actions = eval_states.to(self.gpu_id), eval_rtg.to(self.gpu_id), eval_T.to(self.gpu_id), eval_actions.to(self.gpu_id)
+            states, rtg, actions = states.to(self.gpu_id), rtg.to(self.gpu_id),  actions.to(self.gpu_id)
+
+        eval_actions = torch.zeros((1, self.max_timesteps, self.action_dim))
+        eval_states = torch.zeros((1, self.max_timesteps, 3*128*128))
+        eval_rtg = torch.zeros((1, self.max_timesteps, 1))
+
+        eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous()
 
         done = False
         states = self.env.reset(mat, self.ddp, self.gpu_id)
-        pred_actions, action_dict = self.model(eval_rtg, eval_states, eval_T, actions = None)
+        old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
+        pred_actions, action_dict = self.model(eval_rtg[:, :4], eval_states[:, :4], eval_timesteps[:, :4], actions = None)
+        action_dict = self._get_latest_action(action_dict, pred_actions, index=0)
 
-        for index in range(1, max_step+1):
+        for time in range(1, max_step+1):
             states, reward, done = self.env.step(states, action_dict)
-            scaled_rtg = eval_rtg - reward/self.evaluation.rtg_scale
+            rtg = reward - old_reward
+            old_reward = reward
+            scaled_rtg = eval_rtg[0, time - 1] - rtg/dataset.rtg_scale
+
 
             policy_ob = self.env.get_policy_ob(states)
+            print(f'Observed reward: {reward}')
 
-            if (done) or (index == max_step):
-                print(f'Observed reward: {reward}')
+            if (done) or (time == max_step):
                 return reward
 
-            eval_actions[:, index] = pred_actions
-            eval_states[:, index] = policy_ob
-            eval_rtg[:, index] = scaled_rtg
-            eval_T[:, index] = index
-            pred_actions, action_dict = self.model(eval_rtg, eval_states, eval_T, eval_actions)
+            eval_actions[:, time - 1] = pred_actions
+            eval_states[:, time] = policy_ob
+            eval_rtg[:, time] = scaled_rtg
+
+            if time < self.context_length:
+                pred_actions, action_dict = model(eval_rtg[:, :4], eval_states[:, :4], eval_timesteps[:, :4], eval_actions[:, :4])
+            else:
+                pred_actions, action_dict = model(eval_rtg[:,time-self.context_length:time], 
+                                                eval_states[:, time-self.context_length:time], 
+                                                eval_timesteps[:, time-self.context_length:time],
+                                                eval_actions[:, time-self.context_length:time])
+            
+
+            action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
 
 
     def _save_checkpoint(self):
@@ -180,7 +219,16 @@ def main(rank, save_every, ddp, world_size, compile_arg):
     if ddp:
         ddp_setup(rank, world_size)
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
-    trainer = Trainer(model, train_config, model_config.action_dim, data_loader, optimizer,save_every, env, rank = rank, ddp = ddp,compile = compile_arg)
+    trainer = Trainer(model, 
+                      train_config, 
+                      model_config.action_dim,
+                      model_config.max_timestep,
+                      train_config.block_size,
+                      data_loader, 
+                      optimizer,save_every, 
+                      env, rank = rank, 
+                      ddp = ddp,
+                      compile = compile_arg)
     trainer.train()
     if ddp:
         destroy_process_group()
