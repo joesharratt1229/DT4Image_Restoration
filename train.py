@@ -20,8 +20,10 @@ from evaluation.env import PnPEnv
 from evaluation.noise import UNetDenoiser2D
 
 """
-SET PARAMETERS AND HYPERPARAMETERS HERE
+In this implementatiion not going to scale rtgs or rtg targets. If doesnt work properly may look to scale rtg targets between 0 and 1.
 """
+
+
 
 train_dict = {
     'learning_rate' : 3e-4,
@@ -78,10 +80,10 @@ class Trainer:
     def __init__(self,
                  model: torch.nn.Module,
                  train_config,
+                 action_dim: int,
                  train_data_loader : DataLoader,
                  optimizer: torch.optim,
                  save_every: int,
-                 eval_image_dir: str,
                  env,
                  gpu_id: Optional[int] = None,
                  ddp: bool = False,
@@ -98,14 +100,13 @@ class Trainer:
             self.model = model
 
         # ADD ALL ARGUMENTS FOR VALIDATION DATASET
-        self.evaluation = EvaluationDataset(rtg_scale = None, rtg_target = None)
+        self.evaluation = EvaluationDataset(block_size = train_config.block_size, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= action_dim, rtg_target = 16)
         if compile:
             self.model = torch.compile(model)
 
         
         self.train_data_loader = train_data_loader
         self.save_every = save_every
-        self.eval_image_dir = eval_image_dir
         self.env = env
 
 
@@ -179,7 +180,7 @@ def main(rank, save_every, ddp, world_size, compile_arg):
     if ddp:
         ddp_setup(rank, world_size)
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
-    trainer = Trainer(model, train_config, data_loader, optimizer,save_every, eval_image_dir, env, rank = rank, ddp = ddp,compile = compile_arg)
+    trainer = Trainer(model, train_config, model_config.action_dim, data_loader, optimizer,save_every, env, rank = rank, ddp = ddp,compile = compile_arg)
     trainer.train()
     if ddp:
         destroy_process_group()
@@ -189,8 +190,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Arguments for decision transformer')
     parser.add_argument('--batch_size', type = int, required = True)
     parser.add_argument('--block_size', type = int, required = True)
-    parser.add_argument('--ddp', type = int, required = True)
-    parser.add_argument('--compile', type = int, required = True)
+    parser.add_argument('--ddp', type = bool, required = True)
+    parser.add_argument('--compile', type = bool, required = True)
     parser.add_argument('--save_every', type = int, required = True)
     parser.add_argument('--max_epochs', type = int, required = True)
     args = parser.parse_args()
@@ -204,7 +205,12 @@ if __name__ == '__main__':
     model = DecisionTransformer(model_config)
     optimizer = model.configure_optimizers(train_config)
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
-    dataset = TrainingDataset(block_size = train_config.block_size)
+    dataset = TrainingDataset(block_size = train_config.block_size, 
+                              rtg_scale= 1, 
+                              data_dir='dataset/data/data_dir', 
+                              action_dim = model_config.action_dim, 
+                              state_file_path='dataset/data/state_dir/data.h5')
+    
     env = PnPEnv(max_episode_step=30, denoiser = denoiser)
     data_loader = prepare_dataloader(dataset, train_config.batch_size, args.ddp)
 

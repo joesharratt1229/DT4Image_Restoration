@@ -6,6 +6,7 @@ import json
 import numpy as np
 from PIL import Image
 from scipy.io import loadmat
+import h5py
 
 
 #TRAINING_DIR = os.path.join(os.getcwd(), 'dataset/data/Images_128')
@@ -31,22 +32,31 @@ class BaseDataset(dataset.Dataset):
         pass
 
 
+
+
 class TrainingDataset(BaseDataset):
     parameters = ['sigma_d', 'mu', 'T']
 
-    def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_dir) -> None:
+    def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_file_path) -> None:
         super().__init__(block_size, data_dir, rtg_scale, action_dim)
-    
-        self.state_dir = state_dir
+        self.state_file_path = state_file_path
         self.timestep_max = 30   
+    
+    def _get_image(self, image_type, index, trajectory):
+        with h5py.File(self.state_file_path, 'r') as file:
+            data = file[f'CSMRI/csmri_{image_type}_image_{index}_trajectory_{trajectory}'][:]
+
+        image = torch.from_numpy(data)
+        return image
+
 
     def _get_states(self, index, traj_start, traj_end, pad = None):
         state_tensors = []
 
         for trajectory in range(traj_start, traj_end):
-            x = torch.from_numpy(np.array(Image.open(f'{self.state_dir}/image_{index}_x_{trajectory}.png'))).reshape(128, 128)
-            z = torch.from_numpy(np.array(Image.open(f'{self.state_dir}/image_{index}_z_{trajectory}.png'))).reshape(128, 128)
-            u = torch.from_numpy(np.array(Image.open(f'{self.state_dir}/image_{index}_u_{trajectory}.png'))).reshape(128, 128)
+            x = self._get_image('x', index, trajectory)
+            z = self._get_image('z', index, trajectory)
+            u = self._get_image('u', index, trajectory)
 
             x = x/255
             z = z/255
@@ -84,6 +94,7 @@ class TrainingDataset(BaseDataset):
         #TODO tokenizer for the task
         traj_name = self._training_dictionary_dir[index]
         traj_path = os.path.join(self._training_dictionary_dir, traj_name)
+        file_index = int(traj_name.split('_')[1].split('.')[0])
         
         with open(traj_path, 'r') as file:
             traj_dict = json.load(file)
@@ -99,7 +110,7 @@ class TrainingDataset(BaseDataset):
             rtg = rtg/self.rtg_scale
             rtg = torch.from_numpy(rtg).reshape(-1, 1)
             timesteps = torch.arange(start, start + self.block_size)
-            states = self._get_states(index, start, start + self.block_size)
+            states = self._get_states(file_index, start, start + self.block_size)
             traj_masks = torch.ones(self.block_size)
         else:
             padding_len = self.block_size - traj_len
@@ -115,7 +126,7 @@ class TrainingDataset(BaseDataset):
             traj_masks = torch.cat([torch.ones(traj_len),
                                     torch.zeros(padding_len)],
                                     dim = 0)
-            states = self._get_states(index, 0, actions.shape[0], pad = padding_len)
+            states = self._get_states(file_index, 0, actions.shape[0], pad = padding_len)
             timesteps = torch.arange(start = 0, end = self.block_size)
         
         #timesteps = timesteps/self.timestep_max
@@ -139,7 +150,7 @@ class EvaluationDataset(BaseDataset):
         fn = self.fns[index]
         mat = loadmat(os.path.join(self.data_dir, fn))
 
-        x = mat['x0'][..., 0].reshape(128, 128)
+        x = mat['x0'][..., 0].reshape(1, 128, 128)
         x = torch.from_numpy(x)
         z = x.clone().detach()
         u = torch.zeros_like(x)
@@ -149,7 +160,9 @@ class EvaluationDataset(BaseDataset):
         T= torch.zeros((1, 1))
         padding_length = self.block_size - 1
 
+        #(block size, 3*128*128)
         states = concat_pad(states, padding_length)
+        #block size, 1
         rtg = concat_pad(rtg, padding_length)
         T = concat_pad(T, padding_length)
         actions = torch.zeros((self.block_size, self.action_dim))
