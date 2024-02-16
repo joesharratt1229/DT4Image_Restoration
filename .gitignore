@@ -2,3 +2,5 @@
 *DS_STORE*
 evaluation/denoiser/weights/unet-nm.pt
 *pycache*
+dataset/data/data_dir/
+dataset/data/state_dir/

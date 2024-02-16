@@ -255,7 +255,7 @@ if __name__ == '__main__':
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
     dataset = TrainingDataset(block_size = train_config.block_size, 
                               rtg_scale= 1, 
-                              data_dir='dataset/data/data_dir', 
+                              data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
                               state_file_path='dataset/data/state_dir/data.h5')
     
