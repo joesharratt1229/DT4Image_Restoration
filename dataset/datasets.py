@@ -44,8 +44,7 @@ class TrainingDataset(BaseDataset):
     
     def _get_image(self, image_type, index, trajectory):
         with h5py.File(self.state_file_path, 'r') as file:
-            data = file[f'CSMRI/csmri_{image_type}_image_{index}_trajectory_{trajectory}'][:]
-
+            data = file['CSMRI'][f'csmri_{image_type}_image_{index}_trajectory_{trajectory}'][:]
         image = torch.from_numpy(data)
         return image
 
