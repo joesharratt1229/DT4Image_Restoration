@@ -209,10 +209,10 @@ class DecisionTransformer(nn.Module):
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
         #states (batch, block_size, (3 * 128 * 128)
-
         batch_size, block_size, _ = states.size()
-        rtg_embeddings = self.embed_return(rtg) #+ time_embeddings + task_embeddings
-        state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).contiguous())# + time_embeddings + task_embeddings
+        rtg_embeddings = self.embed_return(rtg) 
+        state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).contiguous())
+        state_embeddings = state_embeddings.reshape(batch_size, block_size, -1)
         
         if actions is not None:
             action_embeddings = self.embed_action(actions)
@@ -229,10 +229,10 @@ class DecisionTransformer(nn.Module):
             T = torch.repeat_interleave(T, 2, dim = 1)
 
         #makes position embedding have (Batch, input_seq_length, embedding_dim)
+        T = T.to(torch.int64)
         all_global_pos_embed = torch.repeat_interleave(self.global_pos_emb, batch_size, 0)
-
         #gets embbedding for relavant timestep in last dimension from the position embedding)
-
+        
         position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
         x = self.embed_dropout(token_embeddings + position_embeddings)
         x = self.transformer(x)
@@ -246,9 +246,9 @@ class DecisionTransformer(nn.Module):
             pred_actions = self.predict_action(x[:, 1::3, :])
         else:
             pred_actions = self.predict_action(x[:, 1::2, :])
-
-
+            
         pred_actions, action_dict = self._transform_actions(pred_actions)
+        
         
         return pred_actions, action_dict
         

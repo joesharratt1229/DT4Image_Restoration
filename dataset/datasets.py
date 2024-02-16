@@ -111,8 +111,8 @@ class TrainingDataset(BaseDataset):
             actions = self._get_actions(traj_dict['Actions'], start, start + block_size)
             rtg = np.array(traj_dict['RTG'][start:start+block_size])
             rtg = rtg/self.rtg_scale
-            rtg = torch.from_numpy(rtg).reshape(-1, 1)
-            timesteps = torch.arange(start, start + block_size)
+            rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
+            timesteps = torch.arange(start, start + block_size, dtype = torch.float32).reshape(-1, 1)
             states = self._get_states(file_index, start, start + block_size)
             traj_masks = torch.ones(block_size)
         else:
@@ -124,14 +124,15 @@ class TrainingDataset(BaseDataset):
             actions = self._get_actions(traj_dict['Actions'], 0, traj_len, pad = padding_len)
             actions = concat_pad(actions, padding_len)
             rtg = np.array(traj_dict['RTG'])/self.rtg_scale
-            rtg = torch.from_numpy(rtg).reshape(-1, 1)
+            rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
             rtg = concat_pad(rtg, padding_len)
             traj_masks = torch.cat([torch.ones(traj_len),
                                     torch.zeros(padding_len)],
                                     dim = 0)
             states = self._get_states(file_index, 0, traj_len, pad = padding_len)
-            timesteps = torch.arange(start = 0, end = block_size)
+            timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
+        traj_masks = traj_masks.unsqueeze(dim = -1)
         #timesteps = timesteps/self.timestep_max
         return states, actions, rtg, traj_masks, timesteps
 

@@ -34,9 +34,9 @@ train_dict = {
 }
 
 device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = 'bloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-ctx = nullcontext() if device_type == 'cpu' else torch.amp.autoscast(device_type = device_type, dtype = ptdtype)
+ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type = device_type, dtype = ptdtype)
         
 
 def ddp_setup(rank, world_size):
@@ -52,7 +52,7 @@ def ddp_setup(rank, world_size):
 
 
 def prepare_dataloader(dataset: Dataset, batch_size: int, ddp: bool):
-    if ddp:
+    if ddp == True:
         return DataLoader(
             dataset,
             batch_size = batch_size,
@@ -64,6 +64,7 @@ def prepare_dataloader(dataset: Dataset, batch_size: int, ddp: bool):
         return DataLoader(
             dataset, 
             batch_size,
+            pin_memory = True
         )
 
 
@@ -102,10 +103,10 @@ class Trainer:
             self.model = model.to(self.gpu_id)
             self.model = DDP(model, device_ids = [gpu_id])
         else:
-            self.model = model
+            self.model = model.to(device_type)
 
         # ADD ALL ARGUMENTS FOR VALIDATION DATASET
-        self.evaluation = EvaluationDataset(block_size = train_config.block_size, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= action_dim, rtg_target = 16)
+        self.evaluation = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= action_dim, rtg_target = 16)
         if compile:
             self.model = torch.compile(model)
 
@@ -133,10 +134,13 @@ class Trainer:
         states, actions, rtg, traj_masks, timesteps = trajectory
         if self.ddp:
             states, actions, rtg, traj_masks, timesteps = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id)
-
+        else:
+            states, actions, rtg, traj_masks, timesteps = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type)
         actions_target = torch.clone(actions).detach()
+        
         with ctx:
             actions_preds, _ = self.model(rtg, states, timesteps, actions)
+            traj_masks = traj_masks.expand_as(actions_target)
             actions_preds = actions_preds.view(-1, actions_preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             actions_target = actions_target.view(-1, actions_target.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             loss = F.mse_loss(actions_preds, actions_target)
@@ -145,6 +149,7 @@ class Trainer:
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
+        print('Loss: ' ,{loss})
 
     @torch.no_grad()
     def _run_evaluation(self):
@@ -197,8 +202,7 @@ class Trainer:
 
 
     def _save_checkpoint(self):
-        raw_model = self.model.module if model.module else model
-        ckp = raw_model.module.state_dict()
+        ckp = self.model.state_dict()
         PATH = "checkpoints/model.pt"
         torch.save(ckp, PATH)
     
@@ -210,9 +214,18 @@ class Trainer:
     def train(self):
         for epoch in range(self.config.max_epochs):
             self._run_epoch()
-            if self.gpu_id == 0 and epoch % self.save_every == 0:
-                self._save_checkpoint()
-                self._run_evaluation()
+            if epoch % self.save_every == 0:
+                if (self.ddp):
+                    if (self.gpu_id == 0):
+                        self._save_checkpoint()
+                        self._run_evaluation()
+                else:
+                    self._save_checkpoint()
+                    try:
+                        self._run_evaluation()
+                    except Exception as e:
+                        print(f"An error occurred during evaluation")
+                    
 
 
 def main(rank, save_every, ddp, world_size, compile_arg):
@@ -226,7 +239,7 @@ def main(rank, save_every, ddp, world_size, compile_arg):
                       train_config.block_size,
                       data_loader, 
                       optimizer,save_every, 
-                      env, rank = rank, 
+                      env,
                       ddp = ddp,
                       compile = compile_arg)
     trainer.train()
@@ -238,8 +251,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Arguments for decision transformer')
     parser.add_argument('--batch_size', type = int, required = True)
     parser.add_argument('--block_size', type = int, required = True)
-    parser.add_argument('--ddp', type = bool, required = True)
-    parser.add_argument('--compile', type = bool, required = True)
+    parser.add_argument('--ddp', action='store_true', help='Enable distributed data parallel')
+    parser.add_argument('--compile', action='store_true', help='Enable compilation')
     parser.add_argument('--save_every', type = int, required = True)
     parser.add_argument('--max_epochs', type = int, required = True)
     args = parser.parse_args()
@@ -253,7 +266,7 @@ if __name__ == '__main__':
     model = DecisionTransformer(model_config)
     optimizer = model.configure_optimizers(train_config)
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
-    dataset = TrainingDataset(block_size = train_config.block_size, 
+    dataset = TrainingDataset(block_size = train_config.block_size//3, 
                               rtg_scale= 1, 
                               data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
