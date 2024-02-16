@@ -112,8 +112,8 @@ class DecisionTransformer(nn.Module):
 
         self.embed_dim = config.embed_dim
 
-        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size + 1, config.embed_dim))
-        self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep +1, config.embed_dim))
+        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.embed_dim))
+        self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep, config.embed_dim))
         self.embed_dropout = nn.Dropout(config.embd_dropout)
 
         #self.embed_time = nn.Embedding(config.max_episode_length, config.embed_dim)
@@ -129,7 +129,7 @@ class DecisionTransformer(nn.Module):
             nn.Conv2d(3, 32, 8, stride = 4, padding = 0), nn.ReLU(),
             nn.Conv2d(32, 64, 6, stride = 2, padding = 0), nn.ReLU(),
             nn.Conv2d(64, 64, 4, stride=1, padding=0), nn.ReLU(),
-            nn.Flatten(), nn.Linear(9216, config.embed_dim), nn.Tanh())
+            nn.Flatten(), nn.Linear(6400, config.embed_dim), nn.Tanh())
         
         blocks = [Block(config) for _ in range(config.n_blocks)]
 
@@ -210,11 +210,9 @@ class DecisionTransformer(nn.Module):
         #T (batch, block_size, 1)
         #states (batch, block_size, (3 * 128 * 128)
 
-        #time_embeddings = self.embed_time(T)
-
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) #+ time_embeddings + task_embeddings
-        state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).type(torch.float32).contiguous())# + time_embeddings + task_embeddings
+        state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).contiguous())# + time_embeddings + task_embeddings
         
         if actions is not None:
             action_embeddings = self.embed_action(actions)
@@ -222,18 +220,21 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, ::3, :] = rtg_embeddings
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings
+            T = torch.repeat_interleave(T, 3, dim = 1)
+
         else:
             token_embeddings = torch.zeros((batch_size, 2 * block_size, self.embed_dim), device = state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
+            T = torch.repeat_interleave(T, 2, dim = 1)
 
         #makes position embedding have (Batch, input_seq_length, embedding_dim)
         all_global_pos_embed = torch.repeat_interleave(self.global_pos_emb, batch_size, 0)
 
-        #gets embbedding for relavant timestep in last dimension from the position embedding
-        position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
+        #gets embbedding for relavant timestep in last dimension from the position embedding)
 
-        x = self.embed_dropout(token_embeddings + position_embeddings) #+ task_embedding)
+        position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
+        x = self.embed_dropout(token_embeddings + position_embeddings)
         x = self.transformer(x)
 
         #TODO -> does it need a layer norm
@@ -244,11 +245,12 @@ class DecisionTransformer(nn.Module):
         if actions is not None:
             pred_actions = self.predict_action(x[:, 1::3, :])
         else:
-            pred_actions = self.predict_action(x[:, 1:, :])
+            pred_actions = self.predict_action(x[:, 1::2, :])
+
 
         pred_actions, action_dict = self._transform_actions(pred_actions)
         
-        return action_dict, pred_actions
+        return pred_actions, action_dict
         
     
     def _transform_actions(self, outputs):
@@ -272,7 +274,7 @@ class DecisionTransformerConfig:
     n_heads = 8
     action_dim = 3
     max_timestep = 30
-    n_blocks = 8
+    n_blocks = 6
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
