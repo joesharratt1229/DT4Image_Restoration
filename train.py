@@ -27,9 +27,9 @@ In this implementatiion not going to scale rtgs or rtg targets. If doesnt work p
 
 train_dict = {
     'learning_rate' : 3e-4,
-    'beta' :(0.09, 0.95),
+    'beta' :(0.9, 0.95),
     'weight_decay' : 0.1,
-    'grad_norm_clipping': 0.1,
+    'grad_norm_clipping': 1.0,
     'num_workers': 0,
 }
 
