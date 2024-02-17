@@ -88,7 +88,7 @@ class Trainer:
                  optimizer: torch.optim,
                  save_every: int,
                  env,
-                 gpu_id: Optional[int] = None,
+                 gpu_id,
                  ddp: bool = False,
                  compile: bool = False) -> None:
         
@@ -100,8 +100,8 @@ class Trainer:
         self.ddp = ddp
         if ddp:
             self.gpu_id = gpu_id
-            self.model = model.to(self.gpu_id)
-            self.model = DDP(model, device_ids = [gpu_id])
+            self.model = model.to(gpu_id)
+            self.model = DDP(model, device_ids = [self.gpu_id])
         else:
             self.model = model.to(device_type)
 
@@ -202,7 +202,8 @@ class Trainer:
 
 
     def _save_checkpoint(self):
-        ckp = self.model.state_dict()
+        model = self.model.module if self.ddp else self.model
+        ckp = model.state_dict()
         PATH = "checkpoints/model.pt"
         torch.save(ckp, PATH)
     
@@ -216,9 +217,12 @@ class Trainer:
             self._run_epoch()
             if epoch % self.save_every == 0:
                 if (self.ddp):
-                    if (self.gpu_id == 0):
-                        self._save_checkpoint()
-                        self._run_evaluation()
+                    try:
+                        if (self.gpu_id == 0):
+                            self._save_checkpoint()
+                            self._run_evaluation()
+                    except Exception as e:
+                        print('Unknown errror')
                 else:
                     self._save_checkpoint()
                     try:
@@ -228,9 +232,28 @@ class Trainer:
                     
 
 
-def main(rank, save_every, ddp, world_size, compile_arg):
+def main(rank, save_every, ddp, world_size, compile_arg, 
+         batch_size, block_size, max_epochs):
     if ddp:
         ddp_setup(rank, world_size)
+    
+    train_dict['batch_size'] = batch_size
+    train_dict['block_size'] = block_size
+    train_dict['max_epochs'] = max_epochs
+    
+    denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
+    train_config = TrainerConfig(**train_dict)
+    model_config = DecisionTransformerConfig(block_size = train_config.block_size)
+    model = DecisionTransformer(model_config)
+    optimizer = model.configure_optimizers(train_config)
+    #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
+    env = PnPEnv(max_episode_step=30, denoiser = denoiser)
+    dataset = TrainingDataset(block_size = train_config.block_size//3, 
+                              rtg_scale= 1, 
+                              data_dir='dataset/data/data_dir/CSMRI', 
+                              action_dim = model_config.action_dim, 
+                              state_file_path='dataset/data/state_dir/data.h5')
+    
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
     trainer = Trainer(model, 
                       train_config, 
@@ -240,6 +263,7 @@ def main(rank, save_every, ddp, world_size, compile_arg):
                       data_loader, 
                       optimizer,save_every, 
                       env,
+                      rank,
                       ddp = ddp,
                       compile = compile_arg)
     trainer.train()
@@ -256,31 +280,16 @@ if __name__ == '__main__':
     parser.add_argument('--save_every', type = int, required = True)
     parser.add_argument('--max_epochs', type = int, required = True)
     args = parser.parse_args()
-
-    train_dict['batch_size'] = args.batch_size
-    train_dict['block_size'] = args.block_size
-    train_dict['max_epochs'] = args.max_epochs
-    denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
-    train_config = TrainerConfig(**train_dict)
-    model_config = DecisionTransformerConfig(block_size = train_config.block_size)
-    model = DecisionTransformer(model_config)
-    optimizer = model.configure_optimizers(train_config)
-    #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
-    dataset = TrainingDataset(block_size = train_config.block_size//3, 
-                              rtg_scale= 1, 
-                              data_dir='dataset/data/data_dir/CSMRI', 
-                              action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/state_dir/data.h5')
-    
-    env = PnPEnv(max_episode_step=30, denoiser = denoiser)
-    data_loader = prepare_dataloader(dataset, train_config.batch_size, args.ddp)
-
     if args.ddp:
         world_size = torch.cuda.device_count()
-        mp.spawn(main, args = {args.save_every, args.ddp, world_size, args.compile}, nprocs=world_size)
-    
+        mp.spawn(main, args=(args.save_every, args.ddp, world_size, 
+                             args.compile, args.batch_size, args.block_size, 
+                             args.max_epochs), nprocs=world_size)
     else: 
-        main(rank = None, save_every=args.save_every, ddp = False, world_size = None, compile_arg = False)
+        main(rank = None, save_every=args.save_every, 
+             ddp = False, world_size = None, compile_arg = False,
+             batch_size=args.batch_size, block_size=args.block_size, 
+             max_epochs=args.max_epochs)
 
 
 
