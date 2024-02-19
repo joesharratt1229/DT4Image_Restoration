@@ -14,14 +14,14 @@ class PnPEnv:
 
     def reset(self, data, ddp, gpu_id):
         #data ()
-        x = torch.from_numpy(data['x0']).reshape(1, 1, 128, 128, 2).contiguous()
+        x = data['x0']
         x = torch.view_as_complex(x)
         z = x.clone().detach()
         u = torch.zeros_like(x)
-        mask = torch.from_numpy(data['mask'].reshape(1, 1, 128, 128)).contiguous().to(torch.bool)
-        y0 = torch.from_numpy(data['y0']).contiguous()
+        mask = data['mask'].reshape(1, 1, 128, 128).contiguous().to(torch.bool)
+        y0 = data['y0'].contiguous()
         y0 = torch.view_as_complex(y0)
-        gt = torch.from_numpy(data['gt'])
+        gt = data['gt']
         if ddp:
             x, z, u, mask, y0, gt = x.to(gpu_id), z.to(gpu_id), u.to(gpu_id), mask.to(gpu_id), y0.to(gpu_id), gt.to(gpu_id)
         return OrderedDict({'x': x, 'y0': y0, 'z': z, 'u': u, 'mask': mask, 'gt': gt})
@@ -68,6 +68,8 @@ class PnPEnv:
 
     @staticmethod
     def compute_reward(x, y0):
+        x = x.reshape(128, 128)
+        y0 = y0.reshape(128, 128)
         mse = torch.mean(F.mse_loss(x, y0, reduction = 'none'))
         psnr = 10 * torch.log10((1**2)/mse)
         return psnr.unsqueeze(dim = 0)

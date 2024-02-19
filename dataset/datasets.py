@@ -77,6 +77,7 @@ class TrainingDataset(BaseDataset):
     @staticmethod
     def _get_actions(action_dict, traj_start, traj_end, pad = None):
         action_lis = [torch.Tensor(action_dict[key][traj_start:traj_end]) for key in action_dict.keys()]
+              
         actions = torch.stack((action_lis), dim = 1)
         
         if pad is not None:
@@ -144,16 +145,17 @@ class EvaluationDataset(BaseDataset):
         self.rtg_target = rtg_target
         self.fns = [im for im in os.listdir(self.data_dir) if im.endswith('.mat')]
         self.fns.sort()
-
-
-
-    def __len__(self):
-        return len(os.listdir(self.datadir))
     
     def __getitem__(self, index):
-        block_size = self.block_size//3
         fn = self.fns[index]
         mat = loadmat(os.path.join(self.data_dir, fn))
+        
+        action_dict = {}
+        action_dict['x0'] = mat['x0']
+        action_dict['y0'] = mat['y0']
+        action_dict['mask'] = mat['mask']
+        action_dict['ATy0'] = mat['ATy0']
+        action_dict['gt'] = mat['gt'] 
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
         x = torch.from_numpy(x)
@@ -163,7 +165,7 @@ class EvaluationDataset(BaseDataset):
         rtg = self.rtg_target/self.rtg_scale
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))
-        return (states, rtg, actions), mat
+        return (states, rtg, actions), action_dict
     
     def get_eval_obs(self, index):
         policy_inputs, mat = self.__getitem__(index)
