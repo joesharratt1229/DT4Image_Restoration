@@ -147,14 +147,16 @@ class EvaluationDataset(BaseDataset):
     
     def __getitem__(self, index):
         fn = self.fns[index]
+        print(fn)
         mat = loadmat(os.path.join(self.data_dir, fn))
-        
         action_dict = {}
         action_dict['x0'] = mat['x0']
         action_dict['y0'] = mat['y0']
         action_dict['mask'] = mat['mask']
         action_dict['ATy0'] = mat['ATy0']
         action_dict['gt'] = mat['gt'] 
+        action_dict['x0'] = np.clip(action_dict['x0'], a_min=0, a_max = None)
+        
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
         x = torch.from_numpy(x)

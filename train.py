@@ -145,8 +145,6 @@ class Trainer:
             traj_masks = traj_masks.expand_as(actions_target)
             actions_preds = actions_preds.view(-1, actions_preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             actions_target = actions_target.view(-1, actions_target.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            print('Preds unsqueezed', actions_preds[:9])
-            print('Target actions', actions_target[:9])
             loss = F.mse_loss(actions_preds, actions_target)
 
         loss.backward()
@@ -155,11 +153,11 @@ class Trainer:
         self.optimizer.zero_grad(set_to_none = True)
         print('Loss: ' ,{loss})
 
-    @torch.no_grad()
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
         model_weights = torch.load('final_mod.pt', map_location=torch.device('cpu'))
         self.model.load_state_dict(model_weights)
+        self.model.eval()
         
         max_step = 30
         for data in self.eval_loader:
@@ -170,8 +168,6 @@ class Trainer:
                 states, rtg = states.to(self.gpu_id), rtg.to(self.gpu_id)
             else:
                 states, rtg = states.to(device_type), rtg.to(device_type)
-                
-        
 
             eval_actions = torch.zeros((1, self.max_timesteps, self.action_dim))
             eval_states = torch.zeros((1, self.max_timesteps, 3*128*128))
@@ -195,13 +191,13 @@ class Trainer:
                 states, reward, done = self.env.step(states, action_dict)
                 rtg = reward - old_reward
                 old_reward = reward
-            
+                print(reward)
                 scaled_rtg = eval_rtg[0, time - 1] - rtg/rtg_scale
                 policy_ob = self.env.get_policy_ob(states)
 
                 if (done) or (time == max_step):
                     print('Final reward', {reward})
-                    continue
+                    break
 
                 eval_actions[:, time - 1] = pred_actions
                 eval_states[:, time] = policy_ob
