@@ -35,7 +35,6 @@ class BaseDataset(dataset.Dataset):
 
 
 class TrainingDataset(BaseDataset):
-    parameters = ['sigma_d', 'mu', 'T']
 
     def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_file_path) -> None:
         super().__init__(block_size, rtg_scale, data_dir, action_dim)
