@@ -204,7 +204,7 @@ class DecisionTransformer(nn.Module):
         return optimizer
     
 
-    def forward(self, rtg, states, T, actions = None): 
+    def forward(self, rtg, states, timesteps, actions = None): 
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
@@ -220,20 +220,20 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, ::3, :] = rtg_embeddings
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings
-            T = torch.repeat_interleave(T, 3, dim = 1)
+            T_interleaved = torch.repeat_interleave(timesteps, 3, dim = 1)
 
         else:
             token_embeddings = torch.zeros((batch_size, 2 * block_size, self.embed_dim), device = state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
-            T = torch.repeat_interleave(T, 2, dim = 1)
+            T_interleaved = torch.repeat_interleave(timesteps, 2, dim = 1)
 
         #makes position embedding have (Batch, input_seq_length, embedding_dim)
-        T = T.to(torch.int64)
+        T_interleaved = T_interleaved.to(torch.int64)
         all_global_pos_embed = torch.repeat_interleave(self.global_pos_emb, batch_size, 0)
         #gets embbedding for relavant timestep in last dimension from the position embedding)
         
-        position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
+        position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T_interleaved, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
         x = self.embed_dropout(token_embeddings + position_embeddings)
         x = self.transformer(x)
 
@@ -247,19 +247,23 @@ class DecisionTransformer(nn.Module):
         else:
             pred_actions = self.predict_action(x[:, 1::2, :])
             
-        pred_actions, action_dict = self._transform_actions(pred_actions)
+        pred_actions, action_dict = self._transform_actions(pred_actions, timesteps)
         
         
         return pred_actions, action_dict
         
     
-    def _transform_actions(self, outputs):
+    def _transform_actions(self, outputs, time):
         chunk_size = outputs.shape[-1]//self.action_dim
         action_values = torch.split(outputs, chunk_size, dim = -1)
         action_dict = OrderedDict()
         for i, key in enumerate(self.action_range):
             action_dict[key] = action_values[i] * self.action_range[key]['scale']\
                         + self.action_range[key]['shift']
+                        
+            if key=='T':
+                mask = (time%5 != 4)
+                action_dict[key][mask] = 0
             
         outputs = torch.cat([action_dict[key] for key in action_dict.keys()], dim = -1)
         return outputs, action_dict

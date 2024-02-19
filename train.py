@@ -145,6 +145,8 @@ class Trainer:
             traj_masks = traj_masks.expand_as(actions_target)
             actions_preds = actions_preds.view(-1, actions_preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             actions_target = actions_target.view(-1, actions_target.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
+            print('Preds', actions_preds[:9])
+            print('Targets', actions_target[:9])
             loss = F.mse_loss(actions_preds, actions_target)
 
         loss.backward()
@@ -233,15 +235,15 @@ class Trainer:
                     try:
                         if (self.gpu_id == 0):
                             self._save_checkpoint()
-                            self._run_evaluation()
+                            #self.run_evaluation()
                     except Exception as e:
                         print('Unknown errror')
                 else:
                     self._save_checkpoint()
-                    try:
-                        self._run_evaluation()
-                    except Exception as e:
-                        print(f"An error occurred during evaluation")
+                    #try:
+                        #self.run_evaluation()
+                    #except Exception as e:
+                    #    print(f"An error occurred during evaluation")
                     
 
 
