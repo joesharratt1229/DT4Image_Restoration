@@ -126,10 +126,9 @@ class DecisionTransformer(nn.Module):
         self.layer_n = nn.LayerNorm(config.embed_dim)
 
         self.state_encoder = nn.Sequential(
-            nn.Conv2d(3, 32, 8, stride = 4, padding = 0), nn.ReLU(),
-            nn.Conv2d(32, 64, 6, stride = 2, padding = 0), nn.ReLU(),
-            nn.Conv2d(64, 64, 4, stride=1, padding=0), nn.ReLU(),
-            nn.Flatten(), nn.Linear(6400, config.embed_dim), nn.Tanh())
+            nn.Conv2d(1, 4, 8, stride = 4, padding = 0), nn.ReLU(),
+            nn.Conv2d(4, 12, 4, stride = 2, padding = 0), nn.ReLU(),
+            nn.Flatten(), nn.Linear(2352, config.embed_dim), nn.ReLU())
         
         blocks = [Block(config) for _ in range(config.n_blocks)]
 
@@ -208,7 +207,7 @@ class DecisionTransformer(nn.Module):
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
-        #states (batch, block_size, (3 * 128 * 128)
+        #states (batch, block_size, (1 * 128 * 128)
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) 
         state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).contiguous())
@@ -260,11 +259,7 @@ class DecisionTransformer(nn.Module):
         for i, key in enumerate(self.action_range):
             action_dict[key] = action_values[i] * self.action_range[key]['scale']\
                         + self.action_range[key]['shift']
-                        
-            if key=='T':
-                mask = (time%5 != 4)
-                action_dict[key][mask] = 0
-            
+                         
         outputs = torch.cat([action_dict[key] for key in action_dict.keys()], dim = -1)
         return outputs, action_dict
 

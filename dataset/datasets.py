@@ -53,15 +53,8 @@ class TrainingDataset(BaseDataset):
 
         for trajectory in range(traj_start, traj_end):
             x = self._get_image('x', index, trajectory)
-            z = self._get_image('z', index, trajectory)
-            u = self._get_image('u', index, trajectory)
-
             x = x/255
-            z = z/255
-            u = u/255
-
-            variable = torch.stack([x, z, u])
-            state_tensors.append(variable)
+            state_tensors.append(x)
 
         states = torch.stack(state_tensors)
 
@@ -100,7 +93,6 @@ class TrainingDataset(BaseDataset):
             traj_dict = json.load(file)
             
         traj_len = len(traj_dict['State Paths'])//3
-        traj_dict['Actions']['T'] = [value if index % 5 == 4 else 0 for index, value in enumerate(traj_dict['Actions']['T'])]
 
         if traj_len >= block_size:
             if traj_len==block_size:
