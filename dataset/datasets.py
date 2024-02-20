@@ -151,10 +151,7 @@ class EvaluationDataset(BaseDataset):
         
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
-        x = torch.from_numpy(x)
-        z = x.clone().detach()
-        u = torch.zeros_like(x)
-        states = torch.cat([x, z, u], dim = 0).view(1, -1)
+        states = x.reshape(self.block_size, -1)
         rtg = self.rtg_target/self.rtg_scale
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))

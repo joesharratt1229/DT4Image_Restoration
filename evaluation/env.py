@@ -57,11 +57,8 @@ class PnPEnv:
     def get_policy_ob(state: OrderedDict):
         """
         x -> (1, 128, 128)
-        """
-        x = state['x'].real
-        z = state['z'].real
-        u = state['u'].real
-        policy_ob = torch.cat((x, z, u), dim = 0)
+        """ 
+        policy_ob = state['x'].real
         policy_ob = policy_ob.reshape(1, -1)
         return policy_ob
 
