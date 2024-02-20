@@ -13,6 +13,8 @@ import os
 from contextlib import nullcontext
 from typing import Optional
 
+import wandb
+
 
 from transformer.decision_transformer import DecisionTransformer, DecisionTransformerConfig
 from dataset.datasets import TrainingDataset, EvaluationDataset
@@ -23,7 +25,7 @@ from evaluation.noise import UNetDenoiser2D
 In this implementatiion not going to scale rtgs or rtg targets. If doesnt work properly may look to scale rtg targets between 0 and 1.
 """
 
-
+wandb.init(project='decision_transformer', entity='joesharratt1229')
 
 train_dict = {
     'learning_rate' : 3e-4,
@@ -153,7 +155,7 @@ class Trainer:
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
-        print('Loss: ' ,{loss})
+        wandb.log({"loss": loss})
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
@@ -216,10 +218,10 @@ class Trainer:
                     action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
 
 
-    def _save_checkpoint(self):
+    def _save_checkpoint(self, epoch):
         model = self.model.module if self.ddp else self.model
         ckp = model.state_dict()
-        PATH = "checkpoints/model.pt"
+        PATH = f"checkpoints/model_{epoch}.pt"
         torch.save(ckp, PATH)
     
     def _run_epoch(self):
@@ -228,22 +230,25 @@ class Trainer:
             self._run_batch(trajectory)
 
     def train(self):
+        wandb.watch(self.model)
         for epoch in range(self.config.max_epochs):
             self._run_epoch()
             if epoch % self.save_every == 0:
                 if (self.ddp):
                     try:
                         if (self.gpu_id == 0):
-                            self._save_checkpoint()
+                            self._save_checkpoint(epoch)
                             #self.run_evaluation()
                     except Exception as e:
                         print('Unknown errror')
                 else:
-                    self._save_checkpoint()
+                    self._save_checkpoint(epoch)
                     #try:
                         #self.run_evaluation()
                     #except Exception as e:
                     #    print(f"An error occurred during evaluation")
+                    
+        wandb.finish( )
                     
 
 

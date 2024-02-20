@@ -210,7 +210,7 @@ class DecisionTransformer(nn.Module):
         #states (batch, block_size, (1 * 128 * 128)
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) 
-        state_embeddings = self.state_encoder(states.reshape(-1, 3, 128, 128).contiguous())
+        state_embeddings = self.state_encoder(states.reshape(-1, 1, 128, 128).contiguous())
         state_embeddings = state_embeddings.reshape(batch_size, block_size, -1)
         
         if actions is not None:
@@ -273,7 +273,7 @@ class DecisionTransformerConfig:
     n_heads = 8
     action_dim = 3
     max_timestep = 30
-    n_blocks = 6
+    n_blocks = 4
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
