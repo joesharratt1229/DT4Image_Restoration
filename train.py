@@ -147,8 +147,6 @@ class Trainer:
             traj_masks = traj_masks.expand_as(actions_target)
             actions_preds = actions_preds.view(-1, actions_preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             actions_target = actions_target.view(-1, actions_target.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            print('Preds', actions_preds[:9])
-            print('Targets', actions_target[:9])
             loss = F.mse_loss(actions_preds, actions_target)
 
         loss.backward()

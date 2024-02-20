@@ -111,9 +111,8 @@ class DecisionTransformer(nn.Module):
         self.action_dim = config.action_dim
 
         self.embed_dim = config.embed_dim
-
-        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.embed_dim))
-        self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep, config.embed_dim))
+        
+        self.time_embed = nn.Embedding(config.max_timestep, config.embed_dim)
         self.embed_dropout = nn.Dropout(config.embd_dropout)
 
         #self.embed_time = nn.Embedding(config.max_episode_length, config.embed_dim)
@@ -182,9 +181,6 @@ class DecisionTransformer(nn.Module):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
 
-        # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('pos_emb')
-        no_decay.add('global_pos_emb')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -212,6 +208,10 @@ class DecisionTransformer(nn.Module):
         rtg_embeddings = self.embed_return(rtg) 
         state_embeddings = self.state_encoder(states.reshape(-1, 1, 128, 128).contiguous())
         state_embeddings = state_embeddings.reshape(batch_size, block_size, -1)
+        timesteps = timesteps.to(torch.int64).reshape(batch_size, -1)
+        
+        timesteps_embeddings = self.time_embed(timesteps)
+        
         
         if actions is not None:
             action_embeddings = self.embed_action(actions)
@@ -219,21 +219,15 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, ::3, :] = rtg_embeddings
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings
-            T_interleaved = torch.repeat_interleave(timesteps, 3, dim = 1)
+            timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 3, dim = 1)
 
         else:
             token_embeddings = torch.zeros((batch_size, 2 * block_size, self.embed_dim), device = state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
-            T_interleaved = torch.repeat_interleave(timesteps, 2, dim = 1)
-
-        #makes position embedding have (Batch, input_seq_length, embedding_dim)
-        T_interleaved = T_interleaved.to(torch.int64)
-        all_global_pos_embed = torch.repeat_interleave(self.global_pos_emb, batch_size, 0)
-        #gets embbedding for relavant timestep in last dimension from the position embedding)
+            timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 2, dim = 1)
         
-        position_embeddings = torch.gather(all_global_pos_embed, 1, torch.repeat_interleave(T_interleaved, self.embed_dim, dim = -1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
-        x = self.embed_dropout(token_embeddings + position_embeddings)
+        x = self.embed_dropout(token_embeddings + timesteps_interleaved)
         x = self.transformer(x)
 
         #TODO -> does it need a layer norm
@@ -266,7 +260,7 @@ class DecisionTransformer(nn.Module):
         
 
 class DecisionTransformerConfig:
-    dropout = 0.1
+    dropout = 0.2
     embd_dropout = 0.1
     #batch_size = 32
     embed_dim = 128

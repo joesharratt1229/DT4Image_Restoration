@@ -6,3 +6,6 @@ dataset/data/data_dir/
 dataset/data/state_dir/
 *.mat*
 *.pt*
+*.log*
+*.yaml*
+*wandb*

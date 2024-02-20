@@ -122,7 +122,7 @@ class TrainingDataset(BaseDataset):
                                     torch.zeros(padding_len)],
                                     dim = 0)
             states = self._get_states(file_index, 0, traj_len, pad = padding_len)
-            timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
+            timesteps = torch.arange(start = 0, end = block_size)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
         #timesteps = timesteps/self.timestep_max
