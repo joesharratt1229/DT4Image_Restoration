@@ -92,7 +92,7 @@ class TrainingDataset(BaseDataset):
         with open(traj_path, 'r') as file:
             traj_dict = json.load(file)
             
-        traj_len = len(traj_dict['State Paths'])//3
+        traj_len = len(traj_dict['State Paths'])
 
         if traj_len >= block_size:
             if traj_len==block_size:

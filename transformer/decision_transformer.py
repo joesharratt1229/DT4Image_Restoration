@@ -137,6 +137,8 @@ class DecisionTransformer(nn.Module):
             nn.Linear(self.embed_dim, self.action_dim),
             nn.Sigmoid()
         )
+        
+        self.predict_rtg = nn.Linear(self.embed_dim, 1)
 
         self.apply(self._init_weights)
 
@@ -237,11 +239,16 @@ class DecisionTransformer(nn.Module):
         #compute this loss on its ass
         if actions is not None:
             pred_actions = self.predict_action(x[:, 1::3, :])
+            pred_rtg = self.predict_rtg(x[:, 2::3, :])
         else:
             pred_actions = self.predict_action(x[:, 1::2, :])
             
+            
         pred_actions, action_dict = self._transform_actions(pred_actions, timesteps)
         
+        if actions is not None:
+            predicted_output = torch.cat([pred_actions, pred_rtg], dim = -1)
+            return predicted_output, action_dict
         
         return pred_actions, action_dict
         

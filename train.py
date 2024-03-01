@@ -14,6 +14,7 @@ from contextlib import nullcontext
 from typing import Optional
 
 import wandb
+import logging
 
 
 from transformer.decision_transformer import DecisionTransformer, DecisionTransformerConfig
@@ -26,6 +27,10 @@ In this implementatiion not going to scale rtgs or rtg targets. If doesnt work p
 """
 
 wandb.init(project='decision_transformer', entity='joesharratt1229')
+
+# Create and configure logger
+logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 train_dict = {
     'learning_rate' : 3e-4,
@@ -141,13 +146,19 @@ class Trainer:
         else:
             states, actions, rtg, traj_masks, timesteps = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type)
         actions_target = torch.clone(actions).detach()
+        rtg_target = torch.clone(rtg).detach()
+        targets = torch.cat([actions_target, rtg_target], dim = -1)
         
         with ctx:
-            actions_preds, _ = self.model(rtg, states, timesteps, actions)
-            traj_masks = traj_masks.expand_as(actions_target)
-            actions_preds = actions_preds.view(-1, actions_preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            actions_target = actions_target.view(-1, actions_target.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            loss = F.mse_loss(actions_preds, actions_target)
+            preds, _ = self.model(rtg, states, timesteps, actions)
+            traj_masks = traj_masks.expand_as(targets)
+            preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
+            targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
+            loss = F.mse_loss(preds, targets)
+            logging.debug('Predictions')
+            logging.debug(preds[:10])
+            logging.debug('Targets')
+            logging.debug(targets[:10])
 
         loss.backward()
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
@@ -185,7 +196,10 @@ class Trainer:
             old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
             print('Original reward', old_reward)
             
-            pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], eval_states[:, :self.context_length], eval_timesteps[:, :self.context_length], actions = None)
+            pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
+                                                   eval_states[:, :self.context_length], 
+                                                   eval_timesteps[:, :self.context_length], 
+                                                   actions = None)
             if self.context_length > 1:
                 action_dict = self._get_latest_action(action_dict, pred_actions, index=0)
 
