@@ -180,7 +180,7 @@ class Trainer:
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
-        model_weights = torch.load('model_0.pt', map_location=device_type)
+        model_weights = torch.load('best_model_which_needs_respect.pt', map_location=device_type)
         self.model.load_state_dict(model_weights)
         self.model.eval()
         
