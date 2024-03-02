@@ -271,7 +271,7 @@ class DecisionTransformer(nn.Module):
 
 class DecisionTransformerConfig:
     dropout = 0.2
-    embd_dropout = 0.1
+    embd_dropout = 0.2
     #batch_size = 32
     embed_dim = 128
     n_heads = 8
