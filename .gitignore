@@ -10,4 +10,4 @@ dataset/data/state_dir/
 *wandb*
 eval_outputs/
 *.DS_Store*
-*__pycache__*
+*.cpython-39.pyc*
