@@ -11,6 +11,7 @@ from torch.distributed import init_process_group, destroy_process_group
 import argparse 
 import os
 from contextlib import nullcontext
+import time
 from typing import Optional
 
 import wandb
@@ -166,10 +167,10 @@ class Trainer:
             preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             loss = F.mse_loss(preds, targets)
-            logging.debug('Predictions')
-            logging.debug(preds[:10])
-            logging.debug('Targets')
-            logging.debug(targets[:10])
+            #logging.debug('Predictions')
+            #logging.debug('Targets')
+            #logging.debug(preds[:10])
+            #logging.debug(targets[:10])
 
         loss.backward()
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
@@ -179,7 +180,7 @@ class Trainer:
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
-        model_weights = torch.load('model_0.pt', map_location=torch.device('cpu'))
+        model_weights = torch.load('model_0.pt', map_location=device_type)
         self.model.load_state_dict(model_weights)
         self.model.eval()
         
@@ -194,18 +195,18 @@ class Trainer:
             else:
                 states, rtg = states.to(device_type), rtg.to(device_type)
 
-            eval_actions = torch.zeros((1, self.max_timesteps, self.action_dim))
-            eval_states = torch.zeros((1, self.max_timesteps, 1*128*128))
-            eval_rtg = torch.zeros((1, self.max_timesteps, 1))
+            eval_actions = torch.zeros((1, self.max_timesteps, self.action_dim)).to(device_type)
+            eval_states = torch.zeros((1, self.max_timesteps, 1*128*128)).to(device_type)
+            eval_rtg = torch.zeros((1, self.max_timesteps, 1)).to(device_type)
 
-            eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous()
+            eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous().to(device_type)
             
             eval_states[0, 0] = states
             eval_rtg[0, 0] = rtg
 
             done = False
-            states = self.env.reset(mat, self.ddp, self.gpu_id)
-            old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0).detach().numpy(), states['gt'])
+            states = self.env.reset(mat, self.ddp, self.gpu_id, device_type)
+            old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
             print('Original reward', old_reward)
             
             pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
@@ -223,6 +224,7 @@ class Trainer:
                                   eval_actions[:, self.context_length],
                                   eval_rtg = True)
             
+            
             pred_rtg = self._get_latest_rtg(pred_rtg, index = 1)
 
             for time in range(1, max_step+1):
@@ -230,14 +232,14 @@ class Trainer:
                 policy_ob = self.env.get_policy_ob(states)
 
                 if (done) or (time == max_step):
-                    x = states['x'].reshape(1, 128, 128).detach().numpy()
+                    x = states['x'].reshape(1, 128, 128)
                     gt = states['gt']
                     reward = self.env.compute_reward(x, gt)
                     total_reward += reward
-                    print(eval_actions)
                     print(time)
                     print('Final reward', {reward})
-                    print(eval_rtg)
+                    #print('Eval rtg', eval_rtg)
+                    #print('Eval actions', eval_actions)
                     break
 
 
@@ -264,7 +266,8 @@ class Trainer:
                     pred_actions, action_dict = self.model(eval_rtg[:,time-self.context_length:time], 
                                                            eval_states[:, time-self.context_length:time], 
                                                            eval_timesteps[:, time-self.context_length:time],
-                                                           eval_actions[:, time-self.context_length:time])
+                                                           eval_actions[:, time-self.context_length:time],
+                                                           eval_actions = True)
                     action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
                     eval_actions[:, time] = pred_actions
                     pred_rtg = self.model(eval_rtg[:,time-self.context_length:time], 
@@ -290,8 +293,10 @@ class Trainer:
 
     def train(self):
         wandb.watch(self.model)
+        start_time = time.time()
         for epoch in range(self.config.max_epochs):
             self._run_epoch()
+            logging.debug(f'Epoch {epoch}')
             if epoch % self.save_every == 0:
                 if (self.ddp):
                     try:
@@ -306,6 +311,10 @@ class Trainer:
                         #self.run_evaluation()
                     #except Exception as e:
                     #    print(f"An error occurred during evaluation")
+                    
+            end_time = time.time()
+            time_duration = start_time - end_time
+            wandb.log({"training_duration": time_duration})
                     
         wandb.finish( )
                     
@@ -326,12 +335,12 @@ def main(rank, save_every, ddp, world_size, compile_arg,
     model = DecisionTransformer(model_config)
     optimizer = model.configure_optimizers(train_config)
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
-    env = PnPEnv(max_episode_step=30, denoiser = denoiser)
+    env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
     dataset = TrainingDataset(block_size = train_config.block_size//3, 
                               rtg_scale= 1, 
                               data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/state_dir/data.h5')
+                              state_file_path='dataset/data/state_dir/data_good.h5')
     
     eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
     eval_loader = DataLoader(dataset = eval_dataset, batch_size=1)

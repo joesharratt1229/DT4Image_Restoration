@@ -11,11 +11,11 @@ from evaluation.utils.transformations import fft, ifft
 
 
 class PnPEnv:
-    def __init__(self, max_episode_step, denoiser) -> None:
+    def __init__(self, max_episode_step, denoiser, device_type) -> None:
         self.max_episode_step = max_episode_step
-        self.denoiser = denoiser
+        self.denoiser = denoiser.to(device_type)
 
-    def reset(self, data, ddp, gpu_id):
+    def reset(self, data, ddp, gpu_id, device_type):
         #data ()
         x = data['x0']
         x = torch.view_as_complex(x)
@@ -27,6 +27,8 @@ class PnPEnv:
         gt = data['gt']
         if ddp:
             x, z, u, mask, y0, gt = x.to(gpu_id), z.to(gpu_id), u.to(gpu_id), mask.to(gpu_id), y0.to(gpu_id), gt.to(gpu_id)
+        else:
+            x, z, u , mask, y0, gt = x.to(device_type), z.to(device_type), u.to(device_type), mask.to(device_type), y0.to(device_type), gt.to(device_type)
         return OrderedDict({'x': x, 'y0': y0, 'z': z, 'u': u, 'mask': mask, 'gt': gt})
 
     
@@ -67,7 +69,8 @@ class PnPEnv:
 
     @staticmethod
     def compute_reward(x, y0):
-        y0 = y0.reshape(1, 128, 128).detach().numpy()
+        x = x.cpu().detach().numpy()
+        y0 = y0.reshape(1, 128, 128).cpu().detach().numpy()
         x = x* 255
         y0 = y0 * 255
         return psnr_qrnn3d(x, y0)

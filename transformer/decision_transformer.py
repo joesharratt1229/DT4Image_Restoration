@@ -274,10 +274,10 @@ class DecisionTransformerConfig:
     embd_dropout = 0.2
     #batch_size = 32
     embed_dim = 128
-    n_heads = 8
+    n_heads = 4
     action_dim = 3
     max_timestep = 30
-    n_blocks = 4
+    n_blocks = 5
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():

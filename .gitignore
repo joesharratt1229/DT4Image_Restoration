@@ -1,5 +1,4 @@
 *cpython*
-*DS_STORE*
 evaluation/denoiser/weights/unet-nm.pt
 *pycache*
 dataset/data/data_dir/
@@ -10,3 +9,5 @@ dataset/data/state_dir/
 *.yaml*
 *wandb*
 eval_outputs/
+*.DS_Store*
+*__pycache__*
