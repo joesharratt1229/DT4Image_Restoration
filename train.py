@@ -124,9 +124,9 @@ class Trainer:
         self.save_every = save_every
         self.env = env
 
-    @staticmethod
-    def _get_latest_action(action_dict, actions_preds, index):
-        if index>=3:
+
+    def _get_latest_action(self, action_dict, actions_preds, index):
+        if index>=self.context_length:
             slice_index = -1
         else:
             slice_index = index
@@ -137,6 +137,17 @@ class Trainer:
         action_dict['mu'] = action_dict['mu'][0][slice_index]
         action_dict['sigma_d'] = action_dict['sigma_d'][0][slice_index]
         return action_dict, actions_preds
+    
+    
+    def _get_latest_rtg(self, rtg_preds, index):
+        if index > self.context_length:
+            slice_index = -1
+        else:
+            slice_index = index
+        
+        
+        rtg_preds = rtg_preds[0][slice_index -1]
+        return rtg_preds
 
 
     def _run_batch(self, trajectory):
@@ -168,12 +179,13 @@ class Trainer:
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
-        model_weights = torch.load('final_mod.pt', map_location=torch.device('cpu'))
+        model_weights = torch.load('model_0.pt', map_location=torch.device('cpu'))
         self.model.load_state_dict(model_weights)
         self.model.eval()
         
         max_step = 30
-        for data in self.eval_loader:
+        total_reward = 0
+        for index, data in enumerate(self.eval_loader):
             policy_inputs, mat = data
             states, rtg, _ = policy_inputs
            
@@ -183,7 +195,7 @@ class Trainer:
                 states, rtg = states.to(device_type), rtg.to(device_type)
 
             eval_actions = torch.zeros((1, self.max_timesteps, self.action_dim))
-            eval_states = torch.zeros((1, self.max_timesteps, 3*128*128))
+            eval_states = torch.zeros((1, self.max_timesteps, 1*128*128))
             eval_rtg = torch.zeros((1, self.max_timesteps, 1))
 
             eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous()
@@ -193,41 +205,76 @@ class Trainer:
 
             done = False
             states = self.env.reset(mat, self.ddp, self.gpu_id)
-            old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
+            old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0).detach().numpy(), states['gt'])
             print('Original reward', old_reward)
             
             pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
                                                    eval_states[:, :self.context_length], 
                                                    eval_timesteps[:, :self.context_length], 
                                                    actions = None)
-            if self.context_length > 1:
-                action_dict = self._get_latest_action(action_dict, pred_actions, index=0)
+        
+            action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index=0)
+                
+            eval_actions[:, 0] = pred_actions
+            
+            pred_rtg = self.model(eval_rtg[:, self.context_length],
+                                  eval_states[:, :self.context_length],
+                                  eval_timesteps[:, :self.context_length],
+                                  eval_actions[:, self.context_length],
+                                  eval_rtg = True)
+            
+            pred_rtg = self._get_latest_rtg(pred_rtg, index = 1)
 
             for time in range(1, max_step+1):
-                states, reward, done = self.env.step(states, action_dict)
-                rtg = reward - old_reward
-                old_reward = reward
-                print(reward)
-                scaled_rtg = eval_rtg[0, time - 1] - rtg/rtg_scale
+                states, done = self.env.step(states, action_dict)
                 policy_ob = self.env.get_policy_ob(states)
 
                 if (done) or (time == max_step):
+                    x = states['x'].reshape(1, 128, 128).detach().numpy()
+                    gt = states['gt']
+                    reward = self.env.compute_reward(x, gt)
+                    total_reward += reward
+                    print(eval_actions)
+                    print(time)
                     print('Final reward', {reward})
+                    print(eval_rtg)
                     break
 
-                eval_actions[:, time - 1] = pred_actions
+
                 eval_states[:, time] = policy_ob
-                eval_rtg[:, time] = scaled_rtg
+                eval_rtg[:, time] = pred_rtg
 
                 if time < self.context_length:
-                    pred_actions, action_dict = self.model(eval_rtg[:, :1], eval_states[:, :1], eval_timesteps[:, :1], eval_actions[:, :1])
+                    pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
+                                                           eval_states[:, :self.context_length], 
+                                                           eval_timesteps[:, :self.context_length], 
+                                                           eval_actions[:, :self.context_length],
+                                                           eval_actions = True)
+                    action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
+                    eval_actions[:, time] = pred_actions
+                    pred_rtg = self.model(eval_rtg[:, :self.context_length], 
+                                          eval_states[:, :self.context_length], 
+                                          eval_timesteps[:, :self.context_length], 
+                                          eval_actions[:, :self.context_length],
+                                          eval_rtg = True)
+                    
+                    pred_rtg = self._get_latest_rtg(pred_rtg, index = time + 1)
+                    
                 else:
                     pred_actions, action_dict = self.model(eval_rtg[:,time-self.context_length:time], 
                                                            eval_states[:, time-self.context_length:time], 
                                                            eval_timesteps[:, time-self.context_length:time],
                                                            eval_actions[:, time-self.context_length:time])
-                if self.context_length > 1:
                     action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
+                    eval_actions[:, time] = pred_actions
+                    pred_rtg = self.model(eval_rtg[:,time-self.context_length:time], 
+                                          eval_states[:, time-self.context_length:time], 
+                                          eval_timesteps[:, time-self.context_length:time],
+                                          eval_actions[:, time-self.context_length:time],
+                                          eval_rtg = True)
+                    pred_rtg = self._get_latest_rtg(pred_rtg, index = time + 1)
+                    
+                    
 
 
     def _save_checkpoint(self, epoch):
@@ -338,4 +385,3 @@ if __name__ == '__main__':
 
 #    trainer.train()
 #    trainer = MetaTrainer(batch_size = args.batch_size)
-

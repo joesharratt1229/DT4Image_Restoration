@@ -201,7 +201,7 @@ class DecisionTransformer(nn.Module):
         return optimizer
     
 
-    def forward(self, rtg, states, timesteps, actions = None): 
+    def forward(self, rtg, states, timesteps, actions = None, eval_rtg = False, eval_actions = False): 
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
@@ -246,11 +246,14 @@ class DecisionTransformer(nn.Module):
             
         pred_actions, action_dict = self._transform_actions(pred_actions, timesteps)
         
-        if actions is not None:
+        
+        if eval_rtg:
+            return pred_rtg
+        elif (eval_actions is True) or (actions is None):
+            return pred_actions, action_dict
+        else:
             predicted_output = torch.cat([pred_actions, pred_rtg], dim = -1)
             return predicted_output, action_dict
-        
-        return pred_actions, action_dict
         
     
     def _transform_actions(self, outputs, time):

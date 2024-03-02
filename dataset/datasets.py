@@ -151,7 +151,7 @@ class EvaluationDataset(BaseDataset):
         
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
-        states = x.reshape(self.block_size, -1)
+        states = x.reshape(1, -1)
         rtg = self.rtg_target/self.rtg_scale
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))

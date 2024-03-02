@@ -9,3 +9,4 @@ dataset/data/state_dir/
 *.log*
 *.yaml*
 *wandb*
+eval_outputs/

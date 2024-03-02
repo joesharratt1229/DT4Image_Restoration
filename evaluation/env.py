@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+from functools import partial
 
 from collections import OrderedDict
 
@@ -46,12 +49,11 @@ class PnPEnv:
         else:
             done = False
 
-        reward = self.compute_reward(x.real.squeeze(dim = 0), gt)
         states['x'] = x
         states['z'] = z
         states['u'] = u 
 
-        return states, reward, done
+        return states, done
     
     @staticmethod
     def get_policy_ob(state: OrderedDict):
@@ -65,11 +67,30 @@ class PnPEnv:
 
     @staticmethod
     def compute_reward(x, y0):
-        x = x.reshape(128, 128)
-        y0 = y0.reshape(128, 128)
-        mse = torch.mean(F.mse_loss(x, y0, reduction = 'none'))
-        psnr = 10 * torch.log10((1**2)/mse)
-        return psnr.unsqueeze(dim = 0)
+        y0 = y0.reshape(1, 128, 128).detach().numpy()
+        x = x* 255
+        y0 = y0 * 255
+        return psnr_qrnn3d(x, y0)
+
+
+
+class Bandwise(object):
+    def __init__(self, index_fn):
+        self.index_fn = index_fn
+
+    def __call__(self, X, Y):
+        C = X.shape[-3]
+        bwindex = []
+        for ch in range(C):
+            x = X[ch, :, :]
+            y = Y[ch, :, :]
+            index = self.index_fn(x, y)
+            bwindex.append(index)
+        return bwindex
+
+def psnr_qrnn3d(X, Y, data_range=255):
+    cal_bwpsnr = Bandwise(partial(peak_signal_noise_ratio, data_range=data_range))
+    return np.mean(cal_bwpsnr(X, Y))     
 
 
         
