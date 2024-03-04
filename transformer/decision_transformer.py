@@ -125,9 +125,10 @@ class DecisionTransformer(nn.Module):
         self.layer_n = nn.LayerNorm(config.embed_dim)
 
         self.state_encoder = nn.Sequential(
-            nn.Conv2d(1, 4, 8, stride = 4, padding = 0), nn.ReLU(),
-            nn.Conv2d(4, 12, 4, stride = 2, padding = 0), nn.ReLU(),
-            nn.Flatten(), nn.Linear(2352, config.embed_dim), nn.ReLU())
+                                nn.Conv2d(1, 8, 8, stride = 4, padding = 0), nn.ReLU(),
+                                nn.Conv2d(8, 16, 4, stride = 2, padding = 0), nn.ReLU(),
+                                nn.Conv2d(16, 16, 3, stride = 1, padding = 0), nn.ReLU(),
+                                nn.Flatten(), nn.Linear(2304, config.embed_dim), nn.Tanh())
         
         blocks = [Block(config) for _ in range(config.n_blocks)]
 
