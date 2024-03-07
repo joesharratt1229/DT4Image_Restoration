@@ -83,12 +83,11 @@ class TrainingDataset(BaseDataset):
         traj_name = os.listdir(self.data_dir)[index]
         traj_path = os.path.join(self.data_dir, traj_name)
         file_index = int(traj_name.split('_')[1].split('.')[0])
-        print(traj_path)
         
         with open(traj_path, 'r') as file:
             traj_dict = json.load(file)
             
-        traj_len = len(traj_dict['State Paths'])
+        traj_len = len(traj_dict['RTG'])
         
         acceleration = traj_dict['acceleration']
         noise_level = traj_dict['noise_level']
@@ -120,16 +119,13 @@ class TrainingDataset(BaseDataset):
                                               torch.zeros(([padding_len] + 
                                                            list(x.shape[1:])),
                                               dtype = x.dtype)], dim = 0)
-            actions = self._get_actions(traj_dict['Actions'], 0, traj_len, pad = padding_len)
-            actions = concat_pad(actions, padding_len)
+            actions = self._get_actions(traj_dict['Actions'], 0, traj_len, pad = padding_len)  
             rtg = np.array(traj_dict['RTG'])/self.rtg_scale
             rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
             rtg = concat_pad(rtg, padding_len)
-            traj_masks = torch.cat([torch.ones(traj_len),
-                                    torch.zeros(padding_len)],
-                                    dim = 0)
+            traj_masks = torch.cat([torch.ones(traj_len),torch.zeros(padding_len)], dim = 0)
             states = self._get_states(file_index, 0, traj_len, pad = padding_len)
-            timesteps = torch.arange(start = 0, end = block_size)
+            timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
         #timesteps = timesteps/self.timestep_max

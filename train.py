@@ -165,7 +165,7 @@ class Trainer:
         if self.ddp:
             states, actions, rtg, traj_masks, timesteps, task = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id), task.to(self.gpu_id)
         else:
-            states, actions, rtg, traj_masks, timesteps = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type), task.to(self.gpu_id)
+            states, actions, rtg, traj_masks, timesteps, task = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type), task.to(device_type)
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
         targets = torch.cat([actions_target, rtg_target], dim = -1)
@@ -191,9 +191,10 @@ class Trainer:
             lr = self.config.learning_rate * lr_mult
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = lr
+            print(lr)
         #cosine decya
         else:
-            progress = float(self.current_step).float(self.max_steps)
+            progress = float(self.current_step)/float(self.max_steps)
             lr_mult = max(0.1, 0.5 * (1.0 + math.cos(math.pi * progress)))
             lr = self.config.learning_rate * lr_mult
             for param_group in self.optimizer.param_groups:
@@ -312,7 +313,7 @@ class Trainer:
             self._run_batch(trajectory)
 
     def train(self):
-        wandb.init(project='decision_transformer', entity='joesharratt1229')
+        wandb.init(project='decision_transformer_proper', entity='joesharratt1229')
         wandb.watch(self.model)
         start_time = time.time()
         for epoch in range(self.config.max_epochs):
@@ -361,13 +362,13 @@ def main(rank, save_every, ddp, world_size, compile_arg,
                               rtg_scale= 1, 
                               data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/state_dir/data_good.h5')
+                              state_file_path='dataset/data/state_dir/data_1.h5')
     
     eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
     eval_loader = DataLoader(dataset = eval_dataset, batch_size=1)
     
     dataset_length = dataset.__len__()
-    max_steps = int(dataset_length//max_steps) * train_dict['max_epochs']
+    max_steps = int(dataset_length//train_dict['batch_size']) * train_dict['max_epochs']
     
     
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
