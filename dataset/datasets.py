@@ -7,12 +7,16 @@ import numpy as np
 from PIL import Image
 from scipy.io import loadmat
 import h5py
+import re
 
 
 
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
+    tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    task_tokenizer = {task: i for i, task in enumerate(tasks)}
+    
     def __init__(self, block_size, rtg_scale, data_dir, action_dim) -> None:
         super(BaseDataset, self).__init__()
         self.block_size = block_size
@@ -28,11 +32,13 @@ class BaseDataset(dataset.Dataset):
         pass
 
 
-
+def extract_task(s):
+    pattern = r'\d+_\d+'
+    match = re.search(pattern, s)
+    return match.group()
+    
 
 class TrainingDataset(BaseDataset):
-    tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
-    task_tokenizer = {task: i for i, task in enumerate(tasks)}
 
     def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_file_path) -> None:
         super().__init__(block_size, rtg_scale, data_dir, action_dim)
@@ -142,7 +148,12 @@ class EvaluationDataset(BaseDataset):
     
     def __getitem__(self, index):
         fn = self.fns[index]
-        print(fn)
+        task_str = extract_task(fn)
+        task = task_str[0] + 'x' + task_str[1:]
+        encode = lambda s: self.task_tokenizer[s]
+        task = encode(task)
+        task = torch.tensor([task])
+        
         mat = loadmat(os.path.join(self.data_dir, fn))
         action_dict = {}
         action_dict['x0'] = mat['x0']
@@ -158,7 +169,7 @@ class EvaluationDataset(BaseDataset):
         rtg = self.rtg_target/self.rtg_scale
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))
-        return (states, rtg, actions), action_dict
+        return (states, rtg, actions, task), action_dict
     
     def get_eval_obs(self, index):
         policy_inputs, mat = self.__getitem__(index)
