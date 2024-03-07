@@ -41,7 +41,7 @@ class TrainingDataset(BaseDataset):
     
     def _get_image(self, image_type, index, trajectory):
         with h5py.File(self.state_file_path, 'r') as file:
-            data = file['CSMRI'][f'csrmi_{image_type}_image_{index}_trajectory_{trajectory}.png'][:]
+            data = file[f'/states/CSMRI/csrmi_{image_type}_image_{index}_trajectory_{trajectory}.png'][:]
         image = torch.from_numpy(data)
         return image
 
@@ -83,6 +83,7 @@ class TrainingDataset(BaseDataset):
         traj_name = os.listdir(self.data_dir)[index]
         traj_path = os.path.join(self.data_dir, traj_name)
         file_index = int(traj_name.split('_')[1].split('.')[0])
+        print(traj_path)
         
         with open(traj_path, 'r') as file:
             traj_dict = json.load(file)
@@ -92,7 +93,7 @@ class TrainingDataset(BaseDataset):
         acceleration = traj_dict['acceleration']
         noise_level = traj_dict['noise_level']
         
-        task = acceleration + '_' + noise_level
+        task = acceleration[0] + '_' + noise_level
         
         encode = lambda s: self.task_tokenizer[s]
         
