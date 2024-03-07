@@ -215,7 +215,7 @@ class DecisionTransformer(nn.Module):
         state_embeddings = self.state_encoder(states.reshape(-1, 1, 128, 128).contiguous())
         state_embeddings = state_embeddings.reshape(batch_size, block_size, -1)
         timesteps = timesteps.to(torch.int64).reshape(batch_size, -1)
-        
+
         timesteps_embeddings = self.time_embed(timesteps)
         #TODO whether to concatenate task embeddings or add as we have done
         task_embeddings = self.task_embed(task)
@@ -235,8 +235,8 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
             timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 2, dim = 1)
-            tasks_interleaved = torch.repeat_interleave(tasks_interleaved, 2, dim = 1)
-        
+            tasks_interleaved = torch.repeat_interleave(task_embeddings, 2, dim = 1)
+            
         x = self.embed_dropout(token_embeddings + timesteps_interleaved + tasks_interleaved)
         x = self.transformer(x)
 
