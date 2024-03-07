@@ -202,7 +202,7 @@ class Trainer:
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
-        model_weights = torch.load('best_model_which_needs_respect.pt', map_location=device_type)
+        model_weights = torch.load('checkpoints/model_0_NEW.pt', map_location=device_type)
         self.model.load_state_dict(model_weights)
         self.model.eval()
         
@@ -210,7 +210,7 @@ class Trainer:
         total_reward = 0
         for index, data in enumerate(self.eval_loader):
             policy_inputs, mat = data
-            states, rtg, _ = policy_inputs
+            states, rtg, _, task = policy_inputs
            
             if self.ddp:
                 states, rtg = states.to(self.gpu_id), rtg.to(self.gpu_id)
@@ -222,6 +222,7 @@ class Trainer:
             eval_rtg = torch.zeros((1, self.max_timesteps, 1)).to(device_type)
 
             eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous().to(device_type)
+            eval_task = task.repeat(1, self.max_timesteps)
             
             eval_states[0, 0] = states
             eval_rtg[0, 0] = rtg
@@ -233,7 +234,8 @@ class Trainer:
             
             pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
                                                    eval_states[:, :self.context_length], 
-                                                   eval_timesteps[:, :self.context_length], 
+                                                   eval_timesteps[:, :self.context_length],
+                                                   eval_task[:, :self.context_length],
                                                    actions = None)
         
             action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index=0)
@@ -243,6 +245,7 @@ class Trainer:
             pred_rtg = self.model(eval_rtg[:, self.context_length],
                                   eval_states[:, :self.context_length],
                                   eval_timesteps[:, :self.context_length],
+                                  eval_task[:, :self.context_length],
                                   eval_actions[:, self.context_length],
                                   eval_rtg = True)
             
@@ -258,6 +261,8 @@ class Trainer:
                     gt = states['gt']
                     reward = self.env.compute_reward(x, gt)
                     total_reward += reward
+                    print(eval_actions)
+                    print(eval_rtg)
                     print(time)
                     print('Final reward', {reward})
                     #print('Eval rtg', eval_rtg)
@@ -271,14 +276,16 @@ class Trainer:
                 if time < self.context_length:
                     pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
                                                            eval_states[:, :self.context_length], 
-                                                           eval_timesteps[:, :self.context_length], 
+                                                           eval_timesteps[:, :self.context_length],
+                                                           eval_task[:, :self.context_length],
                                                            eval_actions[:, :self.context_length],
                                                            eval_actions = True)
                     action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
                     eval_actions[:, time] = pred_actions
                     pred_rtg = self.model(eval_rtg[:, :self.context_length], 
                                           eval_states[:, :self.context_length], 
-                                          eval_timesteps[:, :self.context_length], 
+                                          eval_timesteps[:, :self.context_length],
+                                          eval_task[:, :self.context_length],
                                           eval_actions[:, :self.context_length],
                                           eval_rtg = True)
                     
@@ -288,6 +295,7 @@ class Trainer:
                     pred_actions, action_dict = self.model(eval_rtg[:,time-self.context_length:time], 
                                                            eval_states[:, time-self.context_length:time], 
                                                            eval_timesteps[:, time-self.context_length:time],
+                                                           eval_task[:, time-self.context_length:time],
                                                            eval_actions[:, time-self.context_length:time],
                                                            eval_actions = True)
                     action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index = time)
@@ -295,9 +303,14 @@ class Trainer:
                     pred_rtg = self.model(eval_rtg[:,time-self.context_length:time], 
                                           eval_states[:, time-self.context_length:time], 
                                           eval_timesteps[:, time-self.context_length:time],
+                                          eval_task[:, time-self.context_length:time],
                                           eval_actions[:, time-self.context_length:time],
                                           eval_rtg = True)
                     pred_rtg = self._get_latest_rtg(pred_rtg, index = time + 1)
+                    
+            if (index + 1) % 7 == 0:
+                avg_reward = total_reward/7
+                print('Average reward, ', avg_reward)
                     
 
     def _save_checkpoint(self, epoch):
