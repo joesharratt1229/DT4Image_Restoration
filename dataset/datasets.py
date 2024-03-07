@@ -9,10 +9,6 @@ from scipy.io import loadmat
 import h5py
 
 
-#TRAINING_DIR = os.path.join(os.getcwd(), 'dataset/data/Images_128')
-#TRAINING_DICTIONARY_DIR = ''
-#STATE_DIR = ''
-#EVALUATION_DIR = ''
 
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
@@ -35,6 +31,8 @@ class BaseDataset(dataset.Dataset):
 
 
 class TrainingDataset(BaseDataset):
+    tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    task_tokenizer = {task: i for i, task in enumerate(tasks)}
 
     def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_file_path) -> None:
         super().__init__(block_size, rtg_scale, data_dir, action_dim)
@@ -46,7 +44,6 @@ class TrainingDataset(BaseDataset):
             data = file['CSMRI'][f'csrmi_{image_type}_image_{index}_trajectory_{trajectory}.png'][:]
         image = torch.from_numpy(data)
         return image
-
 
     def _get_states(self, index, traj_start, traj_end, pad = None):
         state_tensors = []
@@ -77,8 +74,6 @@ class TrainingDataset(BaseDataset):
             actions = torch.cat([actions, padding], dim = 0)
 
         return actions
-        
-
 
     def __getitem__(self, 
                     index: int
@@ -93,6 +88,17 @@ class TrainingDataset(BaseDataset):
             traj_dict = json.load(file)
             
         traj_len = len(traj_dict['State Paths'])
+        
+        acceleration = traj_dict['acceleration']
+        noise_level = traj_dict['noise_level']
+        
+        task = acceleration + '_' + noise_level
+        
+        encode = lambda s: self.task_tokenizer[s]
+        
+        task = encode(task)
+        task = torch.tensor([task])
+        task = task.repeat(block_size)
 
         if traj_len >= block_size:
             if traj_len==block_size:
@@ -126,7 +132,7 @@ class TrainingDataset(BaseDataset):
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
         #timesteps = timesteps/self.timestep_max
-        return states, actions, rtg, traj_masks, timesteps
+        return states, actions, rtg, traj_masks, timesteps, task
 
 
 class EvaluationDataset(BaseDataset):

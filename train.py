@@ -12,6 +12,7 @@ import argparse
 import os
 from contextlib import nullcontext
 import time
+import math
 from typing import Optional
 
 import wandb
@@ -27,7 +28,7 @@ from evaluation.noise import UNetDenoiser2D
 In this implementatiion not going to scale rtgs or rtg targets. If doesnt work properly may look to scale rtg targets between 0 and 1.
 """
 
-wandb.init(project='decision_transformer', entity='joesharratt1229')
+
 
 # Create and configure logger
 logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
@@ -39,6 +40,7 @@ train_dict = {
     'weight_decay' : 0.1,
     'grad_norm_clipping': 1.0,
     'num_workers': 0,
+    'lr_decay': True
 }
 
 device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -96,6 +98,7 @@ class Trainer:
                  optimizer: torch.optim,
                  save_every: int,
                  env,
+                 max_steps,
                  eval_loader,
                  gpu_id,
                  ddp: bool = False,
@@ -124,6 +127,9 @@ class Trainer:
         self.eval_loader = eval_loader
         self.save_every = save_every
         self.env = env
+        self.max_steps = max_steps
+        self.warmup_steps = 200
+        self.current_step = 0
 
 
     def _get_latest_action(self, action_dict, actions_preds, index):
@@ -149,34 +155,49 @@ class Trainer:
         
         rtg_preds = rtg_preds[0][slice_index -1]
         return rtg_preds
+    
+    def _increment_step(self):
+        self.current_step += 1
 
 
     def _run_batch(self, trajectory):
-        states, actions, rtg, traj_masks, timesteps = trajectory
+        states, actions, rtg, traj_masks, timesteps, task = trajectory
         if self.ddp:
-            states, actions, rtg, traj_masks, timesteps = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id)
+            states, actions, rtg, traj_masks, timesteps, task = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id), task.to(self.gpu_id)
         else:
-            states, actions, rtg, traj_masks, timesteps = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type)
+            states, actions, rtg, traj_masks, timesteps = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type), task.to(self.gpu_id)
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
         targets = torch.cat([actions_target, rtg_target], dim = -1)
         
+        self._increment_step()
+        
         with ctx:
-            preds, _ = self.model(rtg, states, timesteps, actions)
+            preds, _ = self.model(rtg, states, timesteps, actions, task)
             traj_masks = traj_masks.expand_as(targets)
             preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             loss = F.mse_loss(preds, targets)
-            #logging.debug('Predictions')
-            #logging.debug('Targets')
-            #logging.debug(preds[:10])
-            #logging.debug(targets[:10])
-
+        
         loss.backward()
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
         wandb.log({"loss": loss})
+        
+        #warmup tokens
+        if self.current_step < self.warmup_steps:
+            lr_mult = self.current_step/self.warmup_steps
+            lr = self.config.learning_rate * lr_mult
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
+        #cosine decya
+        else:
+            progress = float(self.current_step).float(self.max_steps)
+            lr_mult = max(0.1, 0.5 * (1.0 + math.cos(math.pi * progress)))
+            lr = self.config.learning_rate * lr_mult
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
@@ -277,21 +298,21 @@ class Trainer:
                                           eval_rtg = True)
                     pred_rtg = self._get_latest_rtg(pred_rtg, index = time + 1)
                     
-                    
-
 
     def _save_checkpoint(self, epoch):
         model = self.model.module if self.ddp else self.model
         ckp = model.state_dict()
         PATH = f"checkpoints/model_{epoch}.pt"
         torch.save(ckp, PATH)
-    
+        
+
     def _run_epoch(self):
         ### do somethiisplang with model if DDP
         for trajectory in self.train_data_loader:
             self._run_batch(trajectory)
 
     def train(self):
+        wandb.init(project='decision_transformer', entity='joesharratt1229')
         wandb.watch(self.model)
         start_time = time.time()
         for epoch in range(self.config.max_epochs):
@@ -345,6 +366,10 @@ def main(rank, save_every, ddp, world_size, compile_arg,
     eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
     eval_loader = DataLoader(dataset = eval_dataset, batch_size=1)
     
+    dataset_length = dataset.__len__()
+    max_steps = int(dataset_length//max_steps) * train_dict['max_epochs']
+    
+    
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
     trainer = Trainer(model, 
                       train_config, 
@@ -354,6 +379,7 @@ def main(rank, save_every, ddp, world_size, compile_arg,
                       data_loader, 
                       optimizer,save_every, 
                       env,
+                      max_steps,
                       eval_loader,
                       rank,
                       ddp = ddp,
@@ -361,6 +387,8 @@ def main(rank, save_every, ddp, world_size, compile_arg,
     trainer.train()
     if ddp:
         destroy_process_group()
+        
+    
 
 
 if __name__ == '__main__':

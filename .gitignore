@@ -11,3 +11,4 @@ dataset/data/state_dir/
 eval_outputs/
 *.DS_Store*
 *.cpython-39.pyc*
+*.ipynb*
