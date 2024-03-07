@@ -173,7 +173,7 @@ class Trainer:
         self._increment_step()
         
         with ctx:
-            preds, _ = self.model(rtg, states, timesteps, actions, task)
+            preds, _ = self.model(rtg, states, timesteps, task, actions)
             traj_masks = traj_masks.expand_as(targets)
             preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
             targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]

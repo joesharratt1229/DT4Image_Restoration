@@ -114,6 +114,8 @@ class DecisionTransformer(nn.Module):
         
         self.time_embed = nn.Embedding(config.max_timestep, config.embed_dim)
         self.embed_dropout = nn.Dropout(config.embd_dropout)
+        
+        self.task_embed = nn.Embedding(9, config.embed_dim)
 
         #self.embed_time = nn.Embedding(config.max_episode_length, config.embed_dim)
         #TODO should activatation function be added after embedd action and returns?
@@ -202,11 +204,12 @@ class DecisionTransformer(nn.Module):
         return optimizer
     
 
-    def forward(self, rtg, states, timesteps, actions = None, eval_rtg = False, eval_actions = False): 
+    def forward(self, rtg, states, timesteps, task, actions = None, eval_rtg = False, eval_actions = False): 
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
         #states (batch, block_size, (1 * 128 * 128)
+        
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) 
         state_embeddings = self.state_encoder(states.reshape(-1, 1, 128, 128).contiguous())
@@ -214,6 +217,8 @@ class DecisionTransformer(nn.Module):
         timesteps = timesteps.to(torch.int64).reshape(batch_size, -1)
         
         timesteps_embeddings = self.time_embed(timesteps)
+        #TODO whether to concatenate task embeddings or add as we have done
+        task_embeddings = self.task_embed(task)
         
         
         if actions is not None:
@@ -223,14 +228,16 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings
             timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 3, dim = 1)
+            tasks_interleaved = torch.repeat_interleave(task_embeddings, 3, dim = 1)
 
         else:
             token_embeddings = torch.zeros((batch_size, 2 * block_size, self.embed_dim), device = state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
             timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 2, dim = 1)
+            tasks_interleaved = torch.repeat_interleave(tasks_interleaved, 2, dim = 1)
         
-        x = self.embed_dropout(token_embeddings + timesteps_interleaved)
+        x = self.embed_dropout(token_embeddings + timesteps_interleaved + tasks_interleaved)
         x = self.transformer(x)
 
         #TODO -> does it need a layer norm
