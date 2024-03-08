@@ -202,11 +202,11 @@ class Trainer:
 
     def run_evaluation(self, rtg_scale):
         #(Batch_size, 1, 3*128*128), (Batch_size, 1, 1), (Batch_size, 1, 1)
-        model_weights = torch.load('checkpoints/model_0_NEW.pt', map_location=device_type)
+        model_weights = torch.load('checkpoints/model_1_NEW_GOOD.pt', map_location=device_type)
         self.model.load_state_dict(model_weights)
         self.model.eval()
         
-        max_step = 30
+        max_step = self.max_timesteps
         total_reward = 0
         for index, data in enumerate(self.eval_loader):
             policy_inputs, mat = data
@@ -265,8 +265,6 @@ class Trainer:
                     print(eval_rtg)
                     print(time)
                     print('Final reward', {reward})
-                    #print('Eval rtg', eval_rtg)
-                    #print('Eval actions', eval_actions)
                     break
 
 
