@@ -219,6 +219,7 @@ class DecisionTransformer(nn.Module):
         timesteps_embeddings = self.time_embed(timesteps)
         #TODO whether to concatenate task embeddings or add as we have done
         task_embeddings = self.task_embed(task)
+        state_embeddings = state_embeddings + task_embeddings
         
         
         if actions is not None:
@@ -228,16 +229,14 @@ class DecisionTransformer(nn.Module):
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings
             timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 3, dim = 1)
-            tasks_interleaved = torch.repeat_interleave(task_embeddings, 3, dim = 1)
 
         else:
             token_embeddings = torch.zeros((batch_size, 2 * block_size, self.embed_dim), device = state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
             timesteps_interleaved = torch.repeat_interleave(timesteps_embeddings, 2, dim = 1)
-            tasks_interleaved = torch.repeat_interleave(task_embeddings, 2, dim = 1)
             
-        x = self.embed_dropout(token_embeddings + timesteps_interleaved + tasks_interleaved)
+        x = self.embed_dropout(token_embeddings + timesteps_interleaved)
         x = self.transformer(x)
 
         #TODO -> does it need a layer norm
