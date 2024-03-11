@@ -130,6 +130,7 @@ class Trainer:
         self.max_steps = max_steps
         self.warmup_steps = 200
         self.current_step = 0
+        self.rtg_loss_weight = 0.6
 
 
     def _get_latest_action(self, action_dict, actions_preds, index):
@@ -168,22 +169,37 @@ class Trainer:
             states, actions, rtg, traj_masks, timesteps, task = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type), task.to(device_type)
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
-        targets = torch.cat([actions_target, rtg_target], dim = -1)
+        
+        
+        prepare_loss = lambda x, mask : x.view(-1, x.shape[-1])[mask.view(-1, mask.shape[-1]) > 0]
         
         self._increment_step()
         
         with ctx:
-            preds, _ = self.model(rtg, states, timesteps, task, actions)
-            traj_masks = traj_masks.expand_as(targets)
-            preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
-            loss = F.mse_loss(preds, targets)
+            action_preds, rtg_preds, _ = self.model(rtg, states, timesteps, task, actions)
+            
+            #action loss
+            action_traj_mask = traj_masks.expand_as(actions_target)
+            action_preds = prepare_loss(action_preds, action_traj_mask)
+            actions_target = prepare_loss(actions_target, action_traj_mask)
+            action_loss = F.mse_loss(action_preds, actions_target)
+            
+            #rtg loss
+            rtg_traj_mask = traj_masks.expand_as(rtg_target)
+            rtg_preds = prepare_loss(rtg_preds, rtg_traj_mask)
+            rtg_target = prepare_loss(rtg_target, rtg_traj_mask)
+            rtg_loss = F.mse_loss(rtg_preds, rtg_target)
+        
+        loss = (self.rtg_loss_weight * rtg_loss) + ((1-self.rtg_loss_weight) * action_loss)
+            
         
         loss.backward()
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
         wandb.log({"loss": loss})
+        wandb.log({'action loss': action_loss})
+        wandb.log({'rtg loss': rtg_loss})
         
         #warmup tokens
         if self.current_step < self.warmup_steps:
