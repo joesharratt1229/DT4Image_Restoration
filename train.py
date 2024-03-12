@@ -128,7 +128,7 @@ class Trainer:
         self.save_every = save_every
         self.env = env
         self.max_steps = max_steps
-        self.warmup_steps = 200
+        self.warmup_steps = 1000
         self.current_step = 0
         self.rtg_loss_weight = 0.6
 
@@ -169,6 +169,9 @@ class Trainer:
             states, actions, rtg, traj_masks, timesteps, task = states.to(device_type), actions.to(device_type), rtg.to(device_type), traj_masks.to(device_type), timesteps.to(device_type), task.to(device_type)
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
+        
+        #print(states.shape)
+        print(iteration)
         
         
         prepare_loss = lambda x, mask : x.view(-1, x.shape[-1])[mask.view(-1, mask.shape[-1]) > 0]
@@ -336,8 +339,8 @@ class Trainer:
 
     def _run_epoch(self):
         ### do somethiisplang with model if DDP
-        for trajectory in self.train_data_loader:
-            self._run_batch(trajectory)
+        for iteration, trajectory in enumerate(self.train_data_loader):
+            self._run_batch(trajectory, iteration)
 
     def train(self):
         wandb.init(project='decision_transformer_proper', entity='joesharratt1229')
@@ -389,13 +392,14 @@ def main(rank, save_every, ddp, world_size, compile_arg,
                               rtg_scale= 1, 
                               data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/state_dir/data_1.h5')
+                              state_file_path='dataset/data/state_dir/data_1_rtg.h5')
     
     eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
     eval_loader = DataLoader(dataset = eval_dataset, batch_size=1)
-    
+    print('Batch size', batch_size)
     dataset_length = dataset.__len__()
     max_steps = int(dataset_length//train_dict['batch_size']) * train_dict['max_epochs']
+    print('Max steps ', max_steps)
     
     
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
