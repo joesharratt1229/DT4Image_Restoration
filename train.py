@@ -128,7 +128,7 @@ class Trainer:
         self.save_every = save_every
         self.env = env
         self.max_steps = max_steps
-        self.warmup_steps = 200
+        self.warmup_steps = 800
         self.current_step = 0
 
 
@@ -169,7 +169,6 @@ class Trainer:
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
         targets = torch.cat([actions_target, rtg_target], dim = -1)
-        print(states.shape)
         
 
         
@@ -185,11 +184,10 @@ class Trainer:
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
         
-        print(loss)
         
-        if self.gpu_id == 0:
-            self._increment_step()
-            wandb.log({"loss": loss})
+
+        self._increment_step()
+        wandb.log({"loss": loss})
         
         #warmup tokens
         if self.current_step < self.warmup_steps:
@@ -330,11 +328,11 @@ class Trainer:
             self._run_batch(trajectory)
 
     def train(self):
-        if self.gpu_id == 0:
-            wandb.login(key='d26ee755e0ba08a9aff87c98d0cedbe8b060484b')
-            wandb.init(project='rtg_pred', entity='joesharratt1229')
-            wandb.watch(self.model)
-            start_time = time.time()
+        
+        wandb.login(key='d26ee755e0ba08a9aff87c98d0cedbe8b060484b')
+        wandb.init(project='rtg_pred', entity='joesharratt1229')
+        wandb.watch(self.model)
+        start_time = time.time()
         for epoch in range(self.config.max_epochs):
             self._run_epoch()
             logging.debug(f'Epoch {epoch}')
@@ -353,12 +351,12 @@ class Trainer:
                     #except Exception as e:
                     #    print(f"An error occurred during evaluation")
             
-            if self.gpu_id == 0:
-                end_time = time.time()
-                time_duration = start_time - end_time
-                wandb.log({"training_duration": time_duration})
-        if self.gpu_id == 0:            
-          wandb.finish( )
+            
+            end_time = time.time()
+            time_duration = start_time - end_time
+            wandb.log({"training_duration": time_duration})
+                   
+        wandb.finish( )
                     
 
 
@@ -388,7 +386,8 @@ def main(rank, save_every, ddp, world_size, compile_arg,
     
     dataset_length = dataset.__len__()
     max_steps = int(dataset_length//train_dict['batch_size']) * train_dict['max_epochs']
-    
+    print(max_steps)
+    print(dataset_length)
     
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
     trainer = Trainer(model, 
