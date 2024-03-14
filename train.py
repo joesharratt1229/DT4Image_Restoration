@@ -169,8 +169,9 @@ class Trainer:
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
         targets = torch.cat([actions_target, rtg_target], dim = -1)
+        print(states.shape)
         
-        self._increment_step()
+
         
         with ctx:
             preds, _ = self.model(rtg, states, timesteps, task, actions)
@@ -183,7 +184,12 @@ class Trainer:
         nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.config.grad_norm_clipping)
         self.optimizer.step()
         self.optimizer.zero_grad(set_to_none = True)
-        wandb.log({"loss": loss})
+        
+        print(loss)
+        
+        if self.gpu_id == 0:
+            self._increment_step()
+            wandb.log({"loss": loss})
         
         #warmup tokens
         if self.current_step < self.warmup_steps:
@@ -324,9 +330,11 @@ class Trainer:
             self._run_batch(trajectory)
 
     def train(self):
-        wandb.init(project='decision_transformer_proper', entity='joesharratt1229')
-        wandb.watch(self.model)
-        start_time = time.time()
+        if self.gpu_id == 0:
+            wandb.login(key='d26ee755e0ba08a9aff87c98d0cedbe8b060484b')
+            wandb.init(project='rtg_pred', entity='joesharratt1229')
+            wandb.watch(self.model)
+            start_time = time.time()
         for epoch in range(self.config.max_epochs):
             self._run_epoch()
             logging.debug(f'Epoch {epoch}')
@@ -344,12 +352,13 @@ class Trainer:
                         #self.run_evaluation()
                     #except Exception as e:
                     #    print(f"An error occurred during evaluation")
-                    
-            end_time = time.time()
-            time_duration = start_time - end_time
-            wandb.log({"training_duration": time_duration})
-                    
-        wandb.finish( )
+            
+            if self.gpu_id == 0:
+                end_time = time.time()
+                time_duration = start_time - end_time
+                wandb.log({"training_duration": time_duration})
+        if self.gpu_id == 0:            
+          wandb.finish( )
                     
 
 
@@ -370,12 +379,11 @@ def main(rank, save_every, ddp, world_size, compile_arg,
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
     env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
     dataset = TrainingDataset(block_size = train_config.block_size//3, 
-                              rtg_scale= 1, 
                               data_dir='dataset/data/data_dir/CSMRI', 
                               action_dim = model_config.action_dim, 
                               state_file_path='dataset/data/state_dir/data_1.h5')
     
-    eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, rtg_scale = 1, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
+    eval_dataset = EvaluationDataset(block_size = train_config.block_size//3, data_dir='evaluation/image_dir/', action_dim= 3, rtg_target = 16)
     eval_loader = DataLoader(dataset = eval_dataset, batch_size=1)
     
     dataset_length = dataset.__len__()

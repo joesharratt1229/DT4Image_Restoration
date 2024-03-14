@@ -52,17 +52,18 @@ class TrainingDataset(BaseDataset):
         self.state_file_path = state_file_path
         self.timestep_max = 30   
     
-    def _get_image(self, image_type, index, trajectory):
+    def _get_image(self,trajectory):
+        traj_path = '/states/' + trajectory[19:]
         with h5py.File(self.state_file_path, 'r') as file:
-            data = file[f'/states/CSMRI/csrmi_{image_type}_image_{index}_trajectory_{trajectory}.png'][:]
+            data = file[traj_path][:]
         image = torch.from_numpy(data)
         return image
 
-    def _get_states(self, index, traj_start, traj_end, pad = None):
+    def _get_states(self, state_path_list, pad = None):
         state_tensors = []
 
-        for trajectory in range(traj_start, traj_end):
-            x = self._get_image('x', index, trajectory)
+        for trajectory in state_path_list:
+            x = self._get_image(trajectory)
             x = x/255
             state_tensors.append(x)
 
@@ -95,9 +96,6 @@ class TrainingDataset(BaseDataset):
         traj_name = os.listdir(self.data_dir)[index]
         traj_path = os.path.join(self.data_dir, traj_name)
         
-        #get index of actual file
-        file_index = int(traj_name.split('_')[1].split('.')[0])
-        
         with open(traj_path, 'r') as file:
             traj_dict = json.load(file)
             
@@ -124,7 +122,8 @@ class TrainingDataset(BaseDataset):
             rtg = np.array(traj_dict['RTG'][start:start+block_size])
             rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
             timesteps = torch.arange(start, start + block_size).reshape(-1, 1)
-            states = self._get_states(file_index, start, start + block_size)
+            state_path_list = traj_dict['State Paths'][start: start + block_size]
+            states = self._get_states(state_path_list)
             traj_masks = torch.ones(block_size)
         else:
             padding_len = block_size - traj_len
@@ -133,7 +132,8 @@ class TrainingDataset(BaseDataset):
             rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
             rtg = torch.cat([rtg, torch.zeros(([padding_len] + list(rtg.shape[1:])), dtype = rtg.dtype)], dim = 0)
             traj_masks = torch.cat([torch.ones(traj_len),torch.zeros(padding_len)], dim = 0)
-            states = self._get_states(file_index, 0, traj_len, pad = padding_len)
+            state_path_list = traj_dict['State Paths'][:traj_len]
+            states = self._get_states(state_path_list, pad = padding_len)
             timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
