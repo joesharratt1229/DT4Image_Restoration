@@ -4,7 +4,6 @@ import torch
 import torch.utils.data.dataset as dataset
 import json
 import numpy as np
-from PIL import Image
 from scipy.io import loadmat
 import h5py
 import re
@@ -14,18 +13,26 @@ import re
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
-    tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
-    task_tokenizer = {task: i for i, task in enumerate(tasks)}
+    _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
-    def __init__(self, block_size, rtg_scale, data_dir, action_dim) -> None:
+    _min_rtg = -1.08
+    _max_rtg = 16.6
+    
+    
+    def __init__(self, block_size, data_dir, action_dim) -> None:
         super(BaseDataset, self).__init__()
         self.block_size = block_size
-        self.rtg_scale = rtg_scale
         self.data_dir = data_dir
         self.action_dim = action_dim
 
     def __len__(self):
         return len(os.listdir(self.data_dir))
+    
+    def _normalize_rtg(self, rtg_arr):
+        minmax_norm = lambda x: (x - BaseDataset._min_rtg)/(BaseDataset._max_rtg - BaseDataset._min_rtg)
+        new_rtg = [minmax_norm(x) for x in rtg_arr]
+        return new_rtg
     
     @abstractmethod
     def __getitem__(self, index):
@@ -40,8 +47,8 @@ def extract_task(s):
 
 class TrainingDataset(BaseDataset):
 
-    def __init__(self, block_size, rtg_scale, data_dir, action_dim, state_file_path) -> None:
-        super().__init__(block_size, rtg_scale, data_dir, action_dim)
+    def __init__(self, block_size, data_dir, action_dim, state_file_path) -> None:
+        super().__init__(block_size, data_dir, action_dim)
         self.state_file_path = state_file_path
         self.timestep_max = 30   
     
@@ -84,10 +91,11 @@ class TrainingDataset(BaseDataset):
     def __getitem__(self, 
                     index: int
                     ) -> torch.Tensor:
-        #TODO tokenizer for the task
         block_size = self.block_size
         traj_name = os.listdir(self.data_dir)[index]
         traj_path = os.path.join(self.data_dir, traj_name)
+        
+        #get index of actual file
         file_index = int(traj_name.split('_')[1].split('.')[0])
         
         with open(traj_path, 'r') as file:
@@ -100,11 +108,11 @@ class TrainingDataset(BaseDataset):
         
         task = acceleration[0] + '_' + noise_level
         
-        encode = lambda s: self.task_tokenizer[s]
-        
-        task = encode(task)
+        task = self._task_tokenizer[task]
         task = torch.tensor([task])
         task = task.repeat(block_size)
+        traj_dict['RTG'] = self._normalize_rtg(traj_dict['RTG'])
+        
 
         if traj_len >= block_size:
             if traj_len==block_size:
@@ -114,34 +122,28 @@ class TrainingDataset(BaseDataset):
 
             actions = self._get_actions(traj_dict['Actions'], start, start + block_size)
             rtg = np.array(traj_dict['RTG'][start:start+block_size])
-            rtg = rtg/self.rtg_scale
             rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
-            timesteps = torch.arange(start, start + block_size, dtype = torch.float32).reshape(-1, 1)
+            timesteps = torch.arange(start, start + block_size).reshape(-1, 1)
             states = self._get_states(file_index, start, start + block_size)
             traj_masks = torch.ones(block_size)
         else:
             padding_len = block_size - traj_len
-            concat_pad = lambda x, padding_len: torch.cat([x, 
-                                              torch.zeros(([padding_len] + 
-                                                           list(x.shape[1:])),
-                                              dtype = x.dtype)], dim = 0)
             actions = self._get_actions(traj_dict['Actions'], 0, traj_len, pad = padding_len)  
-            rtg = np.array(traj_dict['RTG'])/self.rtg_scale
+            rtg = np.array(traj_dict['RTG'])
             rtg = torch.from_numpy(rtg).type(torch.float32).reshape(-1, 1)
-            rtg = concat_pad(rtg, padding_len)
+            rtg = torch.cat([rtg, torch.zeros(([padding_len] + list(rtg.shape[1:])), dtype = rtg.dtype)], dim = 0)
             traj_masks = torch.cat([torch.ones(traj_len),torch.zeros(padding_len)], dim = 0)
             states = self._get_states(file_index, 0, traj_len, pad = padding_len)
             timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
-        #timesteps = timesteps/self.timestep_max
         return states, actions, rtg, traj_masks, timesteps, task
 
 
 class EvaluationDataset(BaseDataset):
 
-    def __init__(self, block_size, rtg_scale, data_dir, action_dim, rtg_target) -> None:
-        super().__init__(block_size, rtg_scale, data_dir, action_dim)
+    def __init__(self, block_size, data_dir, action_dim, rtg_target) -> None:
+        super().__init__(block_size, data_dir, action_dim)
         self.rtg_target = rtg_target
         self.fns = [im for im in os.listdir(self.data_dir) if im.endswith('.mat')]
         self.fns.sort()
@@ -150,8 +152,7 @@ class EvaluationDataset(BaseDataset):
         fn = self.fns[index]
         task_str = extract_task(fn)
         task = task_str[0] + 'x' + task_str[1:]
-        encode = lambda s: self.task_tokenizer[s]
-        task = encode(task)
+        task = self._task_tokenizer[task]
         task = torch.tensor([task])
         
         mat = loadmat(os.path.join(self.data_dir, fn))
@@ -166,7 +167,7 @@ class EvaluationDataset(BaseDataset):
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
         states = x.reshape(1, -1)
-        rtg = self.rtg_target/self.rtg_scale
+        rtg = (self.rtg_target - EvaluationDataset._min_rtg)/(EvaluationDataset._max_rtg - EvaluationDataset._min_rtg)
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))
         return (states, rtg, actions, task), action_dict
