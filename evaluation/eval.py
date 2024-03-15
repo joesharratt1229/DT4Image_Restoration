@@ -171,7 +171,12 @@ class Evaluator:
         for evalset in eval_paths:
             vanilla_eval_dataset = EvaluationDataset(block_size = self.context_length//3, data_dir=evalset, action_dim= 3, rtg_target = float(self.rtg_target))
             eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
-            self._generate(eval_loader)
+            increment_reward = self._generate(eval_loader)
+            
+
+        
+
+        
             
 
         

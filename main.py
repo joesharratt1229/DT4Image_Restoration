@@ -3,11 +3,12 @@ import argparse
 import logging
 from contextlib import nullcontext
 
+import pandas as pd
 
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-#from torch.distributed import init_process_group, destroy_process_group
+from torch.distributed import init_process_group, destroy_process_group
 from torch.utils.data.distributed import DistributedSampler
 import torch.multiprocessing as mp
 
@@ -159,5 +160,7 @@ if __name__ == '__main__':
                          'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/']
         
         
+        #evaluate.run(dataset_paths)
         evaluate.run(dataset_paths)
+
         
