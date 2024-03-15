@@ -172,13 +172,6 @@ class EvaluationDataset(BaseDataset):
         actions = torch.zeros((self.action_dim))
         return (states, rtg, actions, task), action_dict
     
-    def get_eval_obs(self, index):
-        policy_inputs, mat = self.__getitem__(index)
-        states, rtg, actions = policy_inputs
-        states = states.unsqueeze(dim = 0)
-        rtg = rtg.unsqueeze(dim = 0)
-        actions = actions.unsqueeze(dim = 0)
-        return (states, rtg, actions), mat
 
         
 

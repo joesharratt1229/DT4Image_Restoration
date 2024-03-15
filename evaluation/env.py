@@ -15,7 +15,7 @@ class PnPEnv:
         self.max_episode_step = max_episode_step
         self.denoiser = denoiser.to(device_type)
 
-    def reset(self, data, ddp, gpu_id, device_type):
+    def reset(self, data, device_type):
         #data ()
         x = data['x0']
         x = torch.view_as_complex(x)
@@ -25,10 +25,8 @@ class PnPEnv:
         y0 = data['y0'].contiguous()
         y0 = torch.view_as_complex(y0)
         gt = data['gt']
-        if ddp:
-            x, z, u, mask, y0, gt = x.to(gpu_id), z.to(gpu_id), u.to(gpu_id), mask.to(gpu_id), y0.to(gpu_id), gt.to(gpu_id)
-        else:
-            x, z, u , mask, y0, gt = x.to(device_type), z.to(device_type), u.to(device_type), mask.to(device_type), y0.to(device_type), gt.to(device_type)
+ 
+        x, z, u , mask, y0, gt = x.to(device_type), z.to(device_type), u.to(device_type), mask.to(device_type), y0.to(device_type), gt.to(device_type)
         return OrderedDict({'x': x, 'y0': y0, 'z': z, 'u': u, 'mask': mask, 'gt': gt})
 
     
