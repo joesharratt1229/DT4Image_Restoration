@@ -82,7 +82,7 @@ class Evaluator:
                 done = False
                 states = self.env.reset(mat, self.device_type)
                 old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
-                print('Original reward', old_reward)
+                #print('Original reward', old_reward)
                 
                 pred_actions, action_dict = self.model(eval_rtg[:, :self.context_length], 
                                                        eval_states[:, :self.context_length], 
@@ -115,8 +115,8 @@ class Evaluator:
                         gt = states['gt']
                         reward = self.env.compute_reward(x, gt)
                         total_reward += reward
-                        print(time)
-                        print('Final reward', {reward})
+                        #print(time)
+                        #print('Final reward', {reward})
                         incremental = reward - old_reward
                         psnr_increment += incremental
                         break
