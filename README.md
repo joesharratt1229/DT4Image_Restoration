@@ -1,2 +1,2 @@
-# MetaRLforPnP
-A project that uses meta reinforcement learning to tune the parameters of a PnP algorithm
+# Decision Transformers
+A project that applies decision transformers to the compressed sensing magnetic resonance imaging (CSMRI) inverse imaging problem
