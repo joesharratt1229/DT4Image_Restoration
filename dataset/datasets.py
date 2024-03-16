@@ -56,8 +56,7 @@ class TrainingDataset(BaseDataset):
         traj_path = '/states/' + trajectory[19:]
         with h5py.File(self.state_file_path, 'r') as file:
             data = file[traj_path][:]
-        image = torch.from_numpy(data)
-        return image
+
 
     def _get_states(self, state_path_list, pad = None):
         state_tensors = []

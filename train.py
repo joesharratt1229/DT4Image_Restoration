@@ -170,19 +170,3 @@ class Trainer:
             wandb.log({"training_duration": time_duration})
                    
         wandb.finish()
-                    
-
-
-
-
-
-
-
-
-
-#SPAWN MULTIPLE PROCESSES
-
-#if __name__ == '__main__':
-
-#    trainer.train()
-#    trainer = MetaTrainer(batch_size = args.batch_size)
