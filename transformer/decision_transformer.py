@@ -59,7 +59,6 @@ class CausalAttention(nn.Module):
         k = k.view(B, T, self.n_heads, E//self.n_heads).transpose(1, 2)
         q = q.view(B, T, self.n_heads, E//self.n_heads).transpose(1, 2)
         v = v.view(B, T, self.n_heads, E//self.n_heads).transpose(1, 2)
-
         attn = (q @ k.transpose(-1, -2))/math.sqrt(q.size(-1))
         attn = attn.masked_fill(self.masking[..., :T, :T] == 0, float('-inf'))
         attn = F.softmax(attn, dim = -1)
