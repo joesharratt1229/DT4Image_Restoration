@@ -74,7 +74,7 @@ class Trainer:
         self.train_data_loader = train_data_loader
         self.save_every = save_every
         self.max_steps = max_steps
-        self.warmup_steps = 800
+        self.warmup_steps = 1250
         self.current_step = 0
         self.ctx = ctx
 

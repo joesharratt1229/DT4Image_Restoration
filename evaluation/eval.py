@@ -74,7 +74,7 @@ class Evaluator:
                 eval_rtg = torch.zeros((1, self.max_timesteps, 1)).to(self.device_type)
 
                 eval_timesteps = torch.arange(start = 0, end=self.max_timesteps).reshape(1, self.max_timesteps, 1).contiguous().to(self.device_type)
-                eval_task = task.repeat(1, self.max_timesteps)
+                eval_task = task.repeat(1, self.max_timesteps).to(self.device_type)
                 
                 eval_states[0, 0] = states
                 eval_rtg[0, 0] = rtg

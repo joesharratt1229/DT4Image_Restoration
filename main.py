@@ -20,7 +20,7 @@ from evaluation.noise import UNetDenoiser2D
 from evaluation.env import PnPEnv
 from dataset.datasets import TrainingDataset
 
-PRETRAINED_MODEL_PATH = 'model_2.pt' 
+PRETRAINED_MODEL_PATH = 'checkpoints/model_2.pt' 
 
 logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -88,7 +88,7 @@ def train_model(rank, save_every, ddp, world_size, compile_arg,
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
     #env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
     dataset = TrainingDataset(block_size = train_config.block_size//3, 
-                              data_dir='dataset/data/data_dir/CSMRI', 
+                              data_dir='dataset/data/data_dir/csmri', 
                               action_dim = model_config.action_dim, 
                               state_file_path='dataset/data/state_dir/data_1.h5')
     
@@ -149,6 +149,7 @@ if __name__ == '__main__':
     else:
         model_config = DecisionTransformerConfig(block_size = args.block_size)
         model = DecisionTransformer(model_config)
+        model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
