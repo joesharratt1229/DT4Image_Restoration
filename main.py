@@ -3,12 +3,11 @@ import argparse
 import logging
 from contextlib import nullcontext
 
-import pandas as pd
 
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from torch.distributed import init_process_group, destroy_process_group
+#from torch.distributed import init_process_group, destroy_process_group
 from torch.utils.data.distributed import DistributedSampler
 import torch.multiprocessing as mp
 
@@ -18,7 +17,8 @@ from train import Trainer, TrainerConfig
 from evaluation.eval import Evaluator
 from evaluation.noise import UNetDenoiser2D
 from evaluation.env import PnPEnv
-from dataset.datasets import TrainingDataset
+from evaluation.mcts import run_mcts
+from dataset.datasets import TrainingDataset, EvaluationDataset
 
 PRETRAINED_MODEL_PATH = 'checkpoints/model_2.pt' 
 
@@ -130,7 +130,11 @@ if __name__ == '__main__':
     
     eval_parser = subparsers.add_parser('eval')
     eval_parser.add_argument('--rtg', help = 'Desired rtg')
-    eval_parser.add_argument('--max_timesteps', help = 'Timesteps')
+    eval_parser.add_argument('--max_timesteps', type = int, help = 'Timesteps')
+    
+    mcts_parser = subparsers.add_parser('mcts')
+    mcts_parser.add_argument('--rtg', help = 'Desired rtg')
+    mcts_parser.add_argument('--max_timesteps', type = int, help = 'Timesteps')
     
 
     args = parser.parse_args()
@@ -146,6 +150,24 @@ if __name__ == '__main__':
                         batch_size=args.batch_size, block_size=args.block_size, 
                         max_epochs=args.max_epochs)
             
+    elif args.mode == 'eval':
+        model_config = DecisionTransformerConfig(block_size = args.block_size)
+        model = DecisionTransformer(model_config)
+        model = model.to(device_type)
+        denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
+        env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
+
+        evaluate = Evaluator(model = model, model_path = PRETRAINED_MODEL_PATH, action_dim = 3, 
+                             max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
+                             block_size=args.block_size, rtg_target = args.rtg)
+        #dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
+        #                 'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
+        #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
+        
+        
+        dataset_paths = ['evaluation/image_dir/test/4_5']
+        evaluate.run(dataset_paths)
+        
     else:
         model_config = DecisionTransformerConfig(block_size = args.block_size)
         model = DecisionTransformer(model_config)
@@ -154,14 +176,24 @@ if __name__ == '__main__':
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
         evaluate = Evaluator(model = model, model_path = PRETRAINED_MODEL_PATH, action_dim = 3, 
-                             max_timesteps=30, env = env, compile = False, device_type=device_type, 
+                             max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
-        dataset_paths = ['evaluation/image_dir/vanilla/4_5/', 'evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/',
-                         'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/',
-                         'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/']
+        #dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
+        #                 'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
+        #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
         
-        #evaluate.run(dataset_paths)
-        evaluate.run(dataset_paths)
-
+        dataset_path = 'evaluation/image_dir/vanilla/8_5'
+        
+        vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = float(10))
+        eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
+        total_reward = 0
+        
+        for index, data in enumerate(eval_loader):
+            policy_inputs, mat = data
+            _, _, _, task = policy_inputs
+            reward = run_mcts(evaluate, policy_inputs, mat, task, env, device_type)
+            total_reward += reward
+            
+        print(total_reward/7)
         

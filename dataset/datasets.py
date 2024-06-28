@@ -154,7 +154,6 @@ class EvaluationDataset(BaseDataset):
         task = task_str[0] + 'x' + task_str[1:]
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
-        
         mat = loadmat(os.path.join(self.data_dir, fn))
         action_dict = {}
         action_dict['x0'] = mat['x0']
