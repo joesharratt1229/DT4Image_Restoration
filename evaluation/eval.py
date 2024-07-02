@@ -57,19 +57,6 @@ class Evaluator:
         rtg_preds = rtg_preds[0][slice_index -1]
         return rtg_preds
     
-    @staticmethod
-    def _sample_action_dict(action_dict):
-        
-        #action_dict['T'] = torch.multinomial(1 - action_dict['T'], num_samples = 1)
-        action_dict['sigma_d'] = torch.normal(action_dict['sigma_d'].item(), std=0.01, size = (1,)).abs()
-        #action_dict['mu'] = torch.normal(action_dict['mu'].item(), std =0.1, size = (1,)).abs()
-        return action_dict
-    
-    
-    #def monte_carlo_init_setup(self, )
-    
-    
-    
     def get_initial_policy_setup(self, policy_inputs, mat):
         states, rtg, _, task = policy_inputs
         states, rtg = states.to(self.device_type), rtg.to(self.device_type)
@@ -130,7 +117,7 @@ class Evaluator:
                 
                 old_reward = self.env.compute_reward(states['x'].real.squeeze(dim = 0), states['gt'])
                 
-                reward, time = self.run_greedy(states,
+                reward, time, _ = self.run_greedy(states,
                                                pred_rtg,
                                                1,
                                                action_dict,
@@ -206,18 +193,22 @@ class Evaluator:
                    eval_actions, 
                    eval_rtg, 
                    eval_timesteps,
-                   eval_task):
+                   eval_task,
+                   no_ref = False):
         
         
         for time in range(start_time, self.max_timesteps+1):
             states, done = self.env.step(states, action_dict)
             policy_ob = self.env.get_policy_ob(states)
             
-            if (done) or (time == self.max_timesteps):
+            if (time == self.max_timesteps) or done:
                 x = states['x'].reshape(1, 128, 128)
                 gt = states['gt']
-                reward = self.env.compute_reward(x, gt)
-                return reward, time
+                if no_ref:
+                    reward = self.env.run_no_ref_reward(states)
+                else:
+                    reward = self.env.compute_reward(x, gt)
+                return reward, time, x
 
 
             eval_states[:, time] = policy_ob

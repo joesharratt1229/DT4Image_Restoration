@@ -16,11 +16,11 @@ from transformer.decision_transformer import DecisionTransformer, DecisionTransf
 from train import Trainer, TrainerConfig
 from evaluation.eval import Evaluator
 from evaluation.noise import UNetDenoiser2D
-from evaluation.env import PnPEnv
+from evaluation.env import PnPEnv, SPIEnv
 from evaluation.mcts import run_mcts
-from dataset.datasets import TrainingDataset, EvaluationDataset
+from dataset.datasets import TrainingDataset, EvaluationDataset, SpiEvaluationDataset
 
-PRETRAINED_MODEL_PATH = 'checkpoints/model_2.pt' 
+PRETRAINED_MODEL_PATH = 'checkpoints/model_3.pt' 
 
 logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -165,7 +165,7 @@ if __name__ == '__main__':
         #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
         
-        dataset_paths = ['evaluation/image_dir/test/4_5']
+        dataset_paths = ['evaluation/image_dir/vanilla/4_10']
         evaluate.run(dataset_paths)
         
     else:
@@ -183,12 +183,13 @@ if __name__ == '__main__':
         #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
         
+        #dataset_path = 'evaluation/spi_image_dir/SPISet13_2020/x4'
         dataset_path = 'evaluation/image_dir/vanilla/8_5'
-        
         vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = float(10))
         eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
-        total_reward = 0
         
+        
+        total_reward = 0
         for index, data in enumerate(eval_loader):
             policy_inputs, mat = data
             _, _, _, task = policy_inputs
@@ -196,4 +197,4 @@ if __name__ == '__main__':
             total_reward += reward
             
         print(total_reward/7)
-        
+            

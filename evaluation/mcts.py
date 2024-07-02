@@ -18,8 +18,8 @@ class Node:
         self.env_state = state
         self.action_dict = action_dict
         self.index = index
-        self.policy_state = policy_state['state'].real.reshape(1, -1)
         self.policy_rtg = rtg
+        self.policy_state = policy_state
         
     def __repr__(self) -> str:
         return f"Node(time = {self.time}, edge = {self.edge})_{self.index}"
@@ -41,11 +41,11 @@ class Node:
         Recursively combine eval state, action, and rtg.
         """
         if self.time < 1:
-            eval_state[:, 0] = self.policy_state
+            eval_state[:, 0] = self.policy_state['x'].real.reshape(1, -1)
             eval_rtg[:, 0] = self.policy_rtg
             return eval_state, eval_rtg
         else:
-            eval_state[:, self.time] = self.policy_state
+            eval_state[:, self.time] = self.policy_state['x'].real.reshape(1, -1)
             eval_rtg[:, self.time] = self.policy_rtg
             return self._parent.build_eval(eval_state, eval_rtg)
         
@@ -62,22 +62,22 @@ class Node:
 
 def sample_action_dict(action, prob):
     _distribution = dist.Normal(action.item(), prob)
-    action = _distribution.sample(torch.Size([3])).abs()
+    action = _distribution.sample(torch.Size([5])).abs()
     probs = torch.exp(_distribution.log_prob(action))
-    probs, _indices = torch.sort(probs)
+    probs, _indices = torch.sort(probs, descending = True)
     action = action[_indices]
     return action, probs
 
 
 
-def select_p_ucb(parent_node, child_nodes, c_base = 10, c = 4):
+def select_p_ucb(parent_node, child_nodes, c_base = 10, c = 30):
     max_p_ucb = -1000
     s_visits = parent_node.s_visits
     beta = torch.log(torch.Tensor([(s_visits + c_base + 1)/c_base])) + c
     max_node = parent_node
     
     for node in child_nodes:
-        p_ucb = (node.reward - parent_node.reward) + node.prob + beta * node.prob * torch.sqrt(torch.log(torch.Tensor([s_visits])))/(1 + node.s_visits)
+        p_ucb = (node.reward - parent_node.reward) + node.prob * torch.sqrt(torch.log(torch.Tensor([s_visits])))/(1 + node.s_visits)
         node.p_ucb = p_ucb
         
         if (p_ucb > max_p_ucb):
@@ -92,7 +92,7 @@ def select_p_ucb(parent_node, child_nodes, c_base = 10, c = 4):
 def prepare_evaluation(curr_node):
     _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
-    task = '8x_5'
+    task = '4x_10'
     task = _task_tokenizer[task]
     task = torch.tensor([task])
     
@@ -116,12 +116,17 @@ def expand_tree(evaluator, curr_node, task, env, node_list, index_tree):
     pred_actions, action_dict, pred_rtg = evaluator.predict_action_and_rtg(eval_states, eval_actions, eval_rtg, timesteps, task, curr_node.time)
 
     curr_node.set_model_action(pred_actions)    
-    sigma_d, probs = sample_action_dict(action_dict['sigma_d'], 0.01)
-    mu, _ = sample_action_dict(action_dict['mu'], 0.005)
+    sigma_d, probs = sample_action_dict(action_dict['sigma_d'], 0.2)
+    #T, _ = sample_action_dict(action_dict['T'], 0.2)
+    mu, probs = sample_action_dict(action_dict['mu'], 0.001)
+    
+    policy_state, _ = env.step(curr_node.env_state, action_dict)
+    
     
     child_nodes = []
-    for index in range(len(sigma_d)):
+    for index in range(len(mu)):
         action_dict['sigma_d'] = sigma_d[index]
+        #action_dict['T'] = T[index]
         action_dict['mu'] = mu[index]
         states, _ = env.step(curr_node.env_state, action_dict)
         node = Node(rtg = pred_rtg,
@@ -131,7 +136,8 @@ def expand_tree(evaluator, curr_node, task, env, node_list, index_tree):
                     parent = curr_node, 
                     edge = index, 
                     action_dict = action_dict,
-                    index = index_tree)
+                    index = index_tree,
+                    policy_state=policy_state)
         
         child_nodes.append(node)
         
@@ -160,7 +166,7 @@ def find_best(parent_node, child_nodes):
     return max_node  
 
 
-def get_best_program(program_dict, node_list, evaluator, env):
+def get_best_program(program_dict, state_dict, node_list, time_dict, env):
     """
     1. get node with best reward ->
     2. recursively extract action dict up until root node
@@ -175,47 +181,21 @@ def get_best_program(program_dict, node_list, evaluator, env):
             max_reward = reward
             best_key = key
     
-            
+    
     for node in node_list:
         if repr(node) == best_key:
             break
     
+    state = state_dict[repr(node)]  
+    time = time_dict[repr(node)] 
     
-    best_node = node
-    print(max_reward)
-    
+    print(time)
     while node._parent:
-        node = node._parent
+        node = node._parent  
+    return env.compute_reward(node.env_state['gt'].reshape(1, 128, 128), state)
     
     ###initial action
-  
-        
-    while node != best_node:
-        child_node = find_best(node, node._children)
-        states, _ = env.step(node.env_state, child_node.action_dict)
-        node = child_node
-        node.env_state = states
-        
-    task, timesteps, eval_actions, eval_states, eval_rtg = prepare_evaluation(node)
-    eval_states, eval_rtg = node.build_eval(eval_states, eval_rtg)
     
-    
-    if node._parent:
-        eval_actions = node._parent.build_action(eval_actions)
-    
-    _, action_dict, _ = evaluator.predict_action_and_rtg(eval_states, eval_actions, eval_rtg, timesteps, task, node.time)
-    
-    final_reward, _ = evaluator.run_greedy(node.env_state, 
-                                           node.policy_rtg, 
-                                           node.time, 
-                                           action_dict, 
-                                           eval_states, 
-                                           eval_actions, 
-                                           eval_rtg, 
-                                           timesteps, 
-                                           task)
-    
-    return final_reward
 
 
 def run_beam_search(node, evaluator):
@@ -226,10 +206,8 @@ def run_beam_search(node, evaluator):
         eval_actions = node._parent.build_action(eval_actions)
         
     _, action_dict, _ = evaluator.predict_action_and_rtg(eval_states, eval_actions, eval_rtg, timesteps, task, node.time)
-
-    
-    reward, _ = evaluator.run_greedy(node.env_state, node.policy_rtg, node.time, action_dict, eval_states, eval_actions, eval_rtg, timesteps, task)
-    return reward
+    reward, time, final_state = evaluator.run_greedy(node.env_state, node.policy_rtg, node.time, action_dict, eval_states, eval_actions, eval_rtg, timesteps, task)
+    return reward, final_state, time
             
             
            
@@ -241,8 +219,10 @@ def run_mcts(eval, policy_inputs, mat, task, env, device_type):
     states, rtg = states, rtg.to(device_type)
     
     
-    root = Node(rtg, states, 0, 1, None, 0, None, 0)
+    root = Node(rtg, states, 0, 1, None, 0, None, 0, states)
     program_dict = {}
+    state_dict = {}
+    time_dict = {}
     
     node_list.append(root)
     
@@ -268,11 +248,15 @@ def run_mcts(eval, policy_inputs, mat, task, env, device_type):
         reward = match_cached_program(curr_node, program_dict)
         
         if reward == -100:
-            reward = run_beam_search(curr_node, eval)
+            reward, final_state, time = run_beam_search(curr_node, eval)
+            curr_node.reward = reward
             program_dict[repr(curr_node)] = reward
+            state_dict[repr(curr_node)] = final_state
+            time_dict[repr(curr_node)] = time
+            
             
         curr_node.backprop(reward)
-    reward = get_best_program(program_dict, node_list, eval, env)
+    reward = get_best_program(program_dict, state_dict, node_list, time_dict, env)
     print('MCTS Reward: ', reward)
     return reward
     
