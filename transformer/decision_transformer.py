@@ -258,7 +258,8 @@ class DecisionTransformer(nn.Module):
         elif (eval_actions is True) or (actions is None):
             return pred_actions, action_dict
         else:
-            return pred_actions, pred_rtg, action_dict
+            predicted_output = torch.cat([pred_actions, pred_rtg], dim = -1)
+            return predicted_output, action_dict
         
     
     def _transform_actions(self, outputs, time):
