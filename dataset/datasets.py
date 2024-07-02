@@ -13,7 +13,7 @@ import re
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
-    _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    _tasks = ['5', '10', '15']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
     _min_rtg = -1.08
@@ -103,7 +103,8 @@ class TrainingDataset(BaseDataset):
         acceleration = traj_dict['acceleration']
         noise_level = traj_dict['noise_level']
         
-        task = acceleration[0] + '_' + noise_level
+        #task = acceleration[0] + '_' + noise_level
+        task = noise_level
         
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
@@ -151,9 +152,9 @@ class EvaluationDataset(BaseDataset):
         fn = self.fns[index]
         task_str = extract_task(fn)
         task = task_str[0] + 'x' + task_str[1:]
+        print(task)
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
-        
         mat = loadmat(os.path.join(self.data_dir, fn))
         action_dict = {}
         action_dict['x0'] = mat['x0']
@@ -170,6 +171,35 @@ class EvaluationDataset(BaseDataset):
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))
         return (states, rtg, actions, task), action_dict
+    
+    
+class SpiEvaluationDataset(BaseDataset):
+    def __init__(self, block_size, data_dir, action_dim, rtg_target) -> None:
+        super().__init__(block_size, data_dir, action_dim)
+        self.rtg_target = rtg_target
+        self.fns = [im for im in os.listdir(self.data_dir) if im.endswith('.mat')]
+        self.fns.sort()
+        
+    def __getitem__(self, index):
+        fn = self.fns[index]
+        mat = loadmat(os.path.join(self.data_dir, fn))
+        action_dict = {}
+        action_dict['output'] = mat['x0']
+        action_dict['input'] = mat['x0']
+        action_dict['K'] = mat['K']
+        action_dict['gt'] = mat['gt']
+        action_dict['x0'] = mat['x0']
+        task = '4x_10'
+        task = self._task_tokenizer[task]
+        task = torch.tensor([task])
+        x = mat['x0'].reshape(1, 128, 128)
+        states = x.reshape(1, -1)
+        rtg = (self.rtg_target - EvaluationDataset._min_rtg)/(EvaluationDataset._max_rtg - EvaluationDataset._min_rtg)
+        rtg = torch.Tensor([rtg]).reshape(1, 1)
+        actions = torch.zeros((self.action_dim))
+        return (states, rtg, actions, task), action_dict
+        
+
     
 
         
