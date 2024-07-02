@@ -13,7 +13,7 @@ import re
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
-    _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    _tasks = ['5', '10', '15']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
     _min_rtg = -1.08
