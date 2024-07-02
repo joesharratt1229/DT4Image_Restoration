@@ -56,8 +56,7 @@ class TrainingDataset(BaseDataset):
         traj_path = '/states/' + trajectory[19:]
         with h5py.File(self.state_file_path, 'r') as file:
             data = file[traj_path][:]
-        image = torch.from_numpy(data)
-        return image
+
 
     def _get_states(self, state_path_list, pad = None):
         state_tensors = []
@@ -104,7 +103,8 @@ class TrainingDataset(BaseDataset):
         acceleration = traj_dict['acceleration']
         noise_level = traj_dict['noise_level']
         
-        task = acceleration[0] + '_' + noise_level
+        #task = acceleration[0] + '_' + noise_level
+        task = noise_level
         
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
