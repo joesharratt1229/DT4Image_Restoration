@@ -53,9 +53,9 @@ class TrainingDataset(BaseDataset):
         self.timestep_max = 30   
     
     def _get_image(self,trajectory):
-        traj_path = '/states/' + trajectory[19:]
+        traj_path = trajectory[10:]
         with h5py.File(self.state_file_path, 'r') as file:
-            data = file[traj_path][:]
+            data = np.float32(file[traj_path][:]/255)
         image = torch.from_numpy(data)
         return image
 
@@ -65,7 +65,6 @@ class TrainingDataset(BaseDataset):
 
         for trajectory in state_path_list:
             x = self._get_image(trajectory)
-            x = x/255
             state_tensors.append(x)
 
         states = torch.stack(state_tensors)
@@ -102,15 +101,15 @@ class TrainingDataset(BaseDataset):
             
         traj_len = len(traj_dict['RTG'])
         
-        acceleration = traj_dict['acceleration']
-        noise_level = traj_dict['noise_level']
+        #acceleration = traj_dict['acceleration']
+        #noise_level = traj_dict['noise_level']
         
         #task = acceleration[0] + '_' + noise_level
-        task = noise_level
+        #task = noise_level
         
-        task = self._task_tokenizer[task]
-        task = torch.tensor([task])
-        task = task.repeat(block_size)
+        #task = self._task_tokenizer[task]
+        #task = torch.tensor([task])
+        #task = task.repeat(block_size)
         traj_dict['RTG'] = self._normalize_rtg(traj_dict['RTG'])
         
 
@@ -139,7 +138,7 @@ class TrainingDataset(BaseDataset):
             timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
-        return states, actions, rtg, traj_masks, timesteps, task
+        return states, actions, rtg, traj_masks, timesteps#, task
 
 
 class EvaluationDataset(BaseDataset):

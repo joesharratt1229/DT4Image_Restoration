@@ -84,11 +84,14 @@ class Trainer:
 
 
     def _run_batch(self, trajectory):
-        states, actions, rtg, traj_masks, timesteps, task = trajectory
+        #states, actions, rtg, traj_masks, timesteps, task = trajectory
+        states, actions, rtg, traj_masks, timesteps = trajectory
         if self.ddp:
-            states, actions, rtg, traj_masks, timesteps, task = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id), task.to(self.gpu_id)
+            #states, actions, rtg, traj_masks, timesteps, task = states.to(self.gpu_id), actions.to(self.gpu_id), rtg.to(self.gpu_id), traj_masks.to(self.gpu_id), timesteps.to(self.gpu_id), task.to(self.gpu_id)
+            pass
         else:
-            states, actions, rtg, traj_masks, timesteps, task = states.to(self.device_type), actions.to(self.device_type), rtg.to(self.device_type), traj_masks.to(self.device_type), timesteps.to(self.device_type), task.to(self.device_type)
+            #states, actions, rtg, traj_masks, timesteps, task = states.to(self.device_type), actions.to(self.device_type), rtg.to(self.device_type), traj_masks.to(self.device_type), timesteps.to(self.device_type), task.to(self.device_type)
+            states, actions, rtg, traj_masks, timesteps = states.to(self.device_type), actions.to(self.device_type), rtg.to(self.device_type), traj_masks.to(self.device_type), timesteps.to(self.device_type)
         actions_target = torch.clone(actions).detach()
         rtg_target = torch.clone(rtg).detach()
         targets = torch.cat([actions_target, rtg_target], dim = -1)
@@ -96,7 +99,8 @@ class Trainer:
 
         
         with self.ctx:
-                preds, _ = self.model(rtg, states, timesteps, task, actions)
+                #preds, _ = self.model(rtg, states, timesteps, task, actions)
+                preds, _ = self.model(rtg, states, timesteps, actions)
                 traj_masks = traj_masks.expand_as(targets)
                 preds = preds.view(-1, preds.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]
                 targets = targets.view(-1, targets.shape[-1])[traj_masks.view(-1, traj_masks.shape[-1]) > 0]

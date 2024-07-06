@@ -88,9 +88,9 @@ def train_model(rank, save_every, ddp, world_size, compile_arg,
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
     #env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
     dataset = TrainingDataset(block_size = train_config.block_size//3, 
-                              data_dir='dataset/data/data_dir/csmri', 
+                              data_dir='dataset/data/json_folder', 
                               action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/state_dir/data_1.h5')
+                              state_file_path='dataset/data/data_1.h5')
     
     
     dataset_length = dataset.__len__()
