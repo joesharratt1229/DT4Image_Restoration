@@ -95,8 +95,6 @@ def train_model(rank, save_every, ddp, world_size, compile_arg,
     
     dataset_length = dataset.__len__()
     max_steps = int(dataset_length//train_dict['batch_size']) * train_dict['max_epochs']
-    print(max_steps)
-    print(dataset_length)
     
     data_loader = prepare_dataloader(dataset, train_config.batch_size, ddp)
     trainer = Trainer(model, 

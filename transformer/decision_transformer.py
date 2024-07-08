@@ -114,7 +114,7 @@ class DecisionTransformer(nn.Module):
         self.time_embed = nn.Embedding(config.max_timestep, config.embed_dim)
         self.embed_dropout = nn.Dropout(config.embd_dropout)
         
-        #self.task_embed = nn.Embedding(3, config.embed_dim)
+        self.task_embed = nn.Embedding(9, config.embed_dim)
 
         #self.embed_time = nn.Embedding(config.max_episode_length, config.embed_dim)
         #TODO should activatation function be added after embedd action and returns?
@@ -203,8 +203,7 @@ class DecisionTransformer(nn.Module):
         return optimizer
     
 
-    #def forward(self, rtg, states, timesteps, task, actions = None, eval_rtg = False, eval_actions = False): 
-    def forward(self, rtg, states, timesteps, actions = None, eval_rtg = False, eval_actions = False): 
+    def forward(self, rtg, states, timesteps, task, actions = None, eval_rtg = False, eval_actions = False): 
         #actions (batch, block_size, 3)
         #rtgs(batch, block_size, 1)
         #T (batch, block_size, 1)
@@ -218,8 +217,8 @@ class DecisionTransformer(nn.Module):
 
         timesteps_embeddings = self.time_embed(timesteps)
         #TODO whether to concatenate task embeddings or add as we have done
-        #task_embeddings = self.task_embed(task)
-        state_embeddings = state_embeddings #+ task_embeddings
+        task_embeddings = self.task_embed(task)
+        state_embeddings = state_embeddings + task_embeddings
         
         
         if actions is not None:
@@ -289,7 +288,3 @@ class DecisionTransformerConfig:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
-
-
-
-

@@ -13,7 +13,7 @@ import re
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
-    _tasks = ['5', '10', '15']
+    _tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
     _min_rtg = -1.08
@@ -86,7 +86,6 @@ class TrainingDataset(BaseDataset):
         if pad is not None:
             padding = torch.zeros((pad, actions.shape[1]))
             actions = torch.cat([actions, padding], dim = 0)
-
         return actions
 
     def __getitem__(self, 
@@ -101,15 +100,13 @@ class TrainingDataset(BaseDataset):
             
         traj_len = len(traj_dict['RTG'])
         
-        #acceleration = traj_dict['acceleration']
-        #noise_level = traj_dict['noise_level']
+        acceleration = traj_dict['acceleration'][0]
+        noise_level = traj_dict['noise_level'][0]
+        task = acceleration + '_' + noise_level
         
-        #task = acceleration[0] + '_' + noise_level
-        #task = noise_level
-        
-        #task = self._task_tokenizer[task]
-        #task = torch.tensor([task])
-        #task = task.repeat(block_size)
+        task = self._task_tokenizer[task]
+        task = torch.tensor([task])
+        task = task.repeat(block_size)
         traj_dict['RTG'] = self._normalize_rtg(traj_dict['RTG'])
         
 
@@ -138,7 +135,7 @@ class TrainingDataset(BaseDataset):
             timesteps = torch.arange(start = 0, end = block_size).reshape(-1, 1)
         
         traj_masks = traj_masks.unsqueeze(dim = -1)
-        return states, actions, rtg, traj_masks, timesteps#, task
+        return states, actions, rtg, traj_masks, timesteps, task
 
 
 class EvaluationDataset(BaseDataset):
