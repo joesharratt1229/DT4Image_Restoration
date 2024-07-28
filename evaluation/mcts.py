@@ -90,9 +90,9 @@ def select_p_ucb(parent_node, child_nodes, c_base = 10, c = 30):
 
 
 def prepare_evaluation(curr_node):
-    _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    _tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
-    task = '4x_10'
+    task = '4_10.0'
     task = _task_tokenizer[task]
     task = torch.tensor([task])
     
@@ -186,6 +186,7 @@ def get_best_program(program_dict, state_dict, node_list, time_dict, env):
         if repr(node) == best_key:
             break
     
+    print(node)
     state = state_dict[repr(node)]  
     time = time_dict[repr(node)] 
     
@@ -206,7 +207,7 @@ def run_beam_search(node, evaluator):
         eval_actions = node._parent.build_action(eval_actions)
         
     _, action_dict, _ = evaluator.predict_action_and_rtg(eval_states, eval_actions, eval_rtg, timesteps, task, node.time)
-    reward, time, final_state = evaluator.run_greedy(node.env_state, node.policy_rtg, node.time, action_dict, eval_states, eval_actions, eval_rtg, timesteps, task)
+    reward, time, final_state = evaluator.run_greedy(node.env_state, node.policy_rtg, node.time, action_dict, eval_states, eval_actions, eval_rtg, timesteps, task, True)
     return reward, final_state, time
             
             
