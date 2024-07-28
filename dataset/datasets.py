@@ -13,11 +13,12 @@ import re
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
 class BaseDataset(dataset.Dataset):
-    _tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
+    #_tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
+    _tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
-    _min_rtg = -1.08
-    _max_rtg = 16.6
+    _min_rtg = -1.8
+    _max_rtg = 5
     
     
     def __init__(self, block_size, data_dir, action_dim) -> None:
@@ -100,9 +101,9 @@ class TrainingDataset(BaseDataset):
             
         traj_len = len(traj_dict['RTG'])
         
-        acceleration = traj_dict['acceleration'][0]
-        noise_level = traj_dict['noise_level'][0]
-        task = acceleration + '_' + noise_level
+        #acceleration = traj_dict['acceleration'][0]
+        #noise_level = traj_dict['noise_level'][0]
+        task = traj_dict['Task']
         
         task = self._task_tokenizer[task]
         task = torch.tensor([task])

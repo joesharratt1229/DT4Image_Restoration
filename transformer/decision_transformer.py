@@ -114,7 +114,7 @@ class DecisionTransformer(nn.Module):
         self.time_embed = nn.Embedding(config.max_timestep, config.embed_dim)
         self.embed_dropout = nn.Dropout(config.embd_dropout)
         
-        self.task_embed = nn.Embedding(9, config.embed_dim)
+        self.task_embed = nn.Embedding(6, config.embed_dim)
 
         #self.embed_time = nn.Embedding(config.max_episode_length, config.embed_dim)
         #TODO should activatation function be added after embedd action and returns?
