@@ -144,9 +144,9 @@ class DecisionTransformer(nn.Module):
 
         self.apply(self._init_weights)
 
-        self.action_range = OrderedDict({'T': {'scale': 1, 'shift': 0} ,
+        self.action_range = OrderedDict({'mu': {'scale': 1, 'shift': 0},
                                          'sigma_d': {'scale': 70 / 255, 'shift': 0},
-                                         'mu': {'scale': 1, 'shift': 0}})
+                                         'T': {'scale': 1, 'shift': 0} })
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
@@ -204,11 +204,6 @@ class DecisionTransformer(nn.Module):
     
 
     def forward(self, rtg, states, timesteps, task, actions = None, eval_rtg = False, eval_actions = False): 
-        #actions (batch, block_size, 3)
-        #rtgs(batch, block_size, 1)
-        #T (batch, block_size, 1)
-        #states (batch, block_size, (1 * 128 * 128)
-        
         batch_size, block_size, _ = states.size()
         rtg_embeddings = self.embed_return(rtg) 
         state_embeddings = self.state_encoder(states.reshape(-1, 1, 128, 128).contiguous())

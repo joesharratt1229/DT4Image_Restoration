@@ -16,11 +16,11 @@ from transformer.decision_transformer import DecisionTransformer, DecisionTransf
 from train import Trainer, TrainerConfig
 from evaluation.eval import Evaluator
 from evaluation.noise import UNetDenoiser2D
-from evaluation.env import PnPEnv, SPIEnv
+from evaluation.env import PnPEnv
 from evaluation.mcts import run_mcts
-from dataset.datasets import TrainingDataset, EvaluationDataset, SpiEvaluationDataset
+from dataset.datasets import TrainingDataset, EvaluationDataset
 
-PRETRAINED_MODEL_PATH = 'checkpoints/model_3.pt' 
+PRETRAINED_MODEL_PATH = 'model_3.pt' 
 
 logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -182,8 +182,8 @@ if __name__ == '__main__':
         
         
         #dataset_path = 'evaluation/spi_image_dir/SPISet13_2020/x4'
-        dataset_path = 'evaluation/image_dir/vanilla/8_5'
-        vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = float(10))
+        dataset_path = 'evaluation/image_dir/vanilla/desired_rtg'
+        vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = args.rtg)
         eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
         
         

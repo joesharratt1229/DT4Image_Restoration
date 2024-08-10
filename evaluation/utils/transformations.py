@@ -1,5 +1,7 @@
 import torch
-from typing import Optional
+import numpy as np
+from scipy.ndimage import gaussian_filter
+
 
 def fft(img: torch.Tensor
         ) -> torch.Tensor:
@@ -53,3 +55,41 @@ def spi_inverse(ztilde, K1, K, mu):
 
     z[K1 != 0] = bave[K1 != 0]
     return torch.clamp(z, 0.0, 1.0)
+
+
+
+def calculate_ssim(img1, img2, k1=0.01, k2=0.03, win_size=11, L=255):
+    """
+    Calculate the Structural Similarity Index (SSIM) between two images.
+    
+    Parameters:
+    - img1, img2: Input images (2D numpy arrays)
+    - k1, k2: Constants for stability
+    - win_size: Size of the Gaussian window
+    - L: Dynamic range of pixel values (typically 2^(#bits per pixel) - 1)
+    
+    Returns:
+    - ssim_map: SSIM score for each pixel
+    - ssim_score: Mean SSIM score
+    """
+    
+    # Constants
+    c1 = (k1 * L) ** 2
+    c2 = (k2 * L) ** 2
+    
+    # Compute means
+    mu1 = gaussian_filter(img1, sigma=1.5, truncate=win_size//2)
+    mu2 = gaussian_filter(img2, sigma=1.5, truncate=win_size//2)
+    
+    # Compute variances and covariance
+    sigma1_sq = gaussian_filter(img1**2, sigma=1.5, truncate=win_size//2) - mu1**2
+    sigma2_sq = gaussian_filter(img2**2, sigma=1.5, truncate=win_size//2) - mu2**2
+    sigma12 = gaussian_filter(img1 * img2, sigma=1.5, truncate=win_size//2) - mu1 * mu2
+    
+    # Compute SSIM
+    num = (2 * mu1 * mu2 + c1) * (2 * sigma12 + c2)
+    den = (mu1**2 + mu2**2 + c1) * (sigma1_sq + sigma2_sq + c2)
+    ssim_map = num / den
+    
+    # Return SSIM map and mean SSIM
+    return ssim_map, np.mean(ssim_map)

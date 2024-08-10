@@ -2,6 +2,9 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 
+from evaluation.utils.transformations import calculate_ssim
+from PIL import Image
+
 from dataset.datasets import EvaluationDataset
 
 class Evaluator:
@@ -81,7 +84,6 @@ class Evaluator:
                                                 eval_task[:, :self.context_length],
                                                 actions = None)
 
-    
         action_dict, pred_actions = self._get_latest_action(action_dict, pred_actions, index=0)  
         eval_actions[:, 0] = pred_actions
         
@@ -138,6 +140,7 @@ class Evaluator:
                     increment_avg = psnr_increment/7
                     print('Average iter, ', np.mean(times))
                     print('Average reward, ', avg_reward)
+                    print('Average ssim: ', average_ssim)
                     print('PSNR increment ', increment_avg)
                     
     
@@ -208,6 +211,10 @@ class Evaluator:
                     reward = self.env.run_no_ref_reward(states)
                 else:
                     reward = self.env.compute_reward(x, gt)
+                    #temp = x.numpy().reshape(128, 128)* 255
+                    #temp = Image.fromarray(temp).convert('RGB')
+                    #temp.save('bust_5.png')
+
                 return reward, time, x
 
 

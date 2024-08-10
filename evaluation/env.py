@@ -136,6 +136,13 @@ class PnPEnv:
     
     def step(self, states: OrderedDict, action_dict: OrderedDict):
         T, mu, sigma_d = action_dict['T'], action_dict['mu'], action_dict['sigma_d']
+        if T > 0.5:
+            done = True
+            return states, done
+        else:
+            done = False
+            
+            
         x, y0, z, u, mask, gt = states['x'], states['y0'], states['z'], states['u'], states['mask'], states['gt']
 
         temp_var = (z - u)
@@ -147,11 +154,6 @@ class PnPEnv:
         z = ifft(z)
 
         u = u + x - z
-        
-        if T > 0.5:
-            done = True
-        else:
-            done = False
 
         states['x'] = x
         states['z'] = z
