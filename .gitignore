@@ -13,3 +13,4 @@ eval_outputs/
 *.cpython-39.pyc*
 *.ipynb*
 evaluation/pretrained/critic_0015000.pkl
+*.png*
