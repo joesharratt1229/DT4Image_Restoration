@@ -163,7 +163,7 @@ if __name__ == '__main__':
         #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
         
-        dataset_paths = ['evaluation/image_dir/vanilla/4_10']
+        dataset_paths = ['evaluation/image_dir/vanilla/2_10']
         evaluate.run(dataset_paths)
         
     else:

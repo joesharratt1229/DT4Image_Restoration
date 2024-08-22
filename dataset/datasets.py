@@ -14,7 +14,7 @@ concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + l
 
 class BaseDataset(dataset.Dataset):
     #_tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
-    _tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5']
+    _tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5', '2x_rtg_1.5', '2x_rtg_3', '2x_rtg_3.5', '2x_rtg_4', '2x_rtg_4.5']
     _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
     _min_rtg = -1.8
@@ -149,7 +149,7 @@ class EvaluationDataset(BaseDataset):
     
     def __getitem__(self, index):
         fn = self.fns[index]
-        task = 'rtg_'+ str(1.5)
+        task = 'rtg_'+ str(4.5)
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
         mat = loadmat(os.path.join(self.data_dir, fn))

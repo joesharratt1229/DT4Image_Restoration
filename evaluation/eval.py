@@ -140,7 +140,6 @@ class Evaluator:
                     increment_avg = psnr_increment/7
                     print('Average iter, ', np.mean(times))
                     print('Average reward, ', avg_reward)
-                    print('Average ssim: ', average_ssim)
                     print('PSNR increment ', increment_avg)
                     
     
