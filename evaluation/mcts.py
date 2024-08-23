@@ -5,7 +5,7 @@ class Node:
     max_timesteps = 30
     context_length = 6
     
-    def __init__(self, rtg, state, time, prob, parent, edge, action_dict, index, policy_state) -> None:
+    def __init__(self, rtg, state, time, prob, parent, edge, action_dict, index, policy_state, task) -> None:
         self._parent = parent
         self._children = []
         self.reward = 0
@@ -20,6 +20,7 @@ class Node:
         self.index = index
         self.policy_rtg = rtg
         self.policy_state = policy_state
+        self.task = task
         
     def __repr__(self) -> str:
         return f"Node(time = {self.time}, edge = {self.edge})_{self.index}"
@@ -89,13 +90,7 @@ def select_p_ucb(parent_node, child_nodes, c_base = 10, c = 30):
     
 
 
-def prepare_evaluation(curr_node):
-    _tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
-    _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
-    task = '4_10.0'
-    task = _task_tokenizer[task]
-    task = torch.tensor([task])
-    
+def prepare_evaluation(curr_node, task):
     task = task.repeat(1, curr_node.max_timesteps)
     timesteps = torch.arange(0, curr_node.max_timesteps).reshape(1, curr_node.max_timesteps, 1).contiguous()
     eval_actions = torch.zeros((1, curr_node.max_timesteps, 3))
@@ -106,7 +101,7 @@ def prepare_evaluation(curr_node):
 
 
 def expand_tree(evaluator, curr_node, task, env, node_list, index_tree):
-    task, timesteps, eval_actions, eval_states, eval_rtg = prepare_evaluation(curr_node)
+    task, timesteps, eval_actions, eval_states, eval_rtg = prepare_evaluation(curr_node, task)
     eval_states, eval_rtg = curr_node.build_eval(eval_states, eval_rtg)
     
     if curr_node._parent:
@@ -137,7 +132,8 @@ def expand_tree(evaluator, curr_node, task, env, node_list, index_tree):
                     edge = index, 
                     action_dict = action_dict,
                     index = index_tree,
-                    policy_state=policy_state)
+                    policy_state=policy_state,
+                    task = task)
         
         child_nodes.append(node)
         
@@ -200,7 +196,7 @@ def get_best_program(program_dict, state_dict, node_list, time_dict, env):
 
 
 def run_beam_search(node, evaluator):
-    task, timesteps, eval_actions, eval_states, eval_rtg = prepare_evaluation(node)
+    task, timesteps, eval_actions, eval_states, eval_rtg = prepare_evaluation(node, node.task)
     eval_states, eval_rtg = node.build_eval(eval_states, eval_rtg)
     
     if node._parent:
@@ -220,7 +216,7 @@ def run_mcts(eval, policy_inputs, mat, task, env, device_type):
     states, rtg = states, rtg.to(device_type)
     
     
-    root = Node(rtg, states, 0, 1, None, 0, None, 0, states)
+    root = Node(rtg, states, 0, 1, None, 0, None, 0, states, task)
     program_dict = {}
     state_dict = {}
     time_dict = {}

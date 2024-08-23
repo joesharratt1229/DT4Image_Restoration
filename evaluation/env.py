@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+import torchvision.transforms as transforms
+
 import numpy as np
 from skimage.metrics import peak_signal_noise_ratio
 
@@ -12,31 +14,46 @@ from functools import partial
 def complex2channel(x):
     N, C, H, W, _ = x.shape
     # N C H W 2 -> N 2C H W
-    temp = x
     x = x.permute(0, 1, 4, 2, 3).contiguous()
     x = x.view(N, C*2, H, W)
     return x
     
+def greyscale_to_rgb(tensor):
+    # Repeat the single channel three times along the channel dimension
+    dim = tensor.shape[1]
+    zeros_tensor = torch.zeros(2, dim, dim)
+    rgb_tensor = torch.cat((tensor, zeros_tensor), dim = 0)
+    return rgb_tensor
+
+
 
 class PnPEnv:
     def __init__(self, max_episode_step, denoiser, device_type) -> None:
         self.max_episode_step = max_episode_step
         self.denoiser = denoiser.to(device_type)
+        self._load_no_ref()
         
-    def run_no_ref_reward(self, state, sigma = 10):
-        sigma = torch.ones((1, 1, 128, 128)) *  sigma/255
-        x = state['x']
-        z = state['z'].real
-        u = state['u'].real
-        mask = state['mask']
-        T = state['T'] * torch.ones((1, 1, 128, 128))
-        Aty0 = state['ATy0']
-        y0 = complex2channel(state['complex_y0'])
-        ob = torch.cat([x, z, u, y0, Aty0, mask, T, sigma], 1)
-        self.critic.eval()
-        value = self.critic(ob)
-        return value
-
+    def _load_no_ref(self):
+        model = torch.hub.load(repo_or_dir="miccunifi/ARNIQA", source="github", model="ARNIQA",
+                       regressor_dataset="kadid10k")
+        model.eval()
+        self.no_ref_model = model
+        
+    def run_no_ref_reward(self, state):
+        img = state['x']
+        img = img.reshape(1,128, 128)
+        
+        
+        
+        img_ds = transforms.Resize((img.size(1) // 2, img.size(2)// 2))(img)
+        img_ds = greyscale_to_rgb(img_ds)
+        img = greyscale_to_rgb(img)
+       
+        with torch.no_grad(), torch.cuda.amp.autocast():
+           score = self.no_ref_model(img.unsqueeze(dim = 0), img_ds.unsqueeze(dim = 0), return_embedding=False, scale_score=True)
+        return score.mean(0).item() 
+        
+        
     def reset(self, data, device_type):
         #data ()
         x = data['x0']
@@ -102,7 +119,7 @@ class PnPEnv:
 
 def torch_psnr(output, gt):
     N = output.shape[0]
-    output = torch.clamp(output, 0, 1)
+    output = torch.clamp(output.real, 0, 1)
     mse = torch.mean(F.mse_loss(output.view(N, -1), gt.view(N, -1), reduction='none'), dim=1)
     psnr = 10 * torch.log10((1 ** 2) / mse)
     return psnr.unsqueeze(1)

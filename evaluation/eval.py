@@ -140,6 +140,7 @@ class Evaluator:
                     print('Average iter, ', np.mean(times))
                     print('Average reward, ', avg_reward)
                     print('PSNR increment ', increment_avg)
+                    return increment_avg
                     
     
     @torch.no_grad()
@@ -209,9 +210,6 @@ class Evaluator:
                     reward = self.env.run_no_ref_reward(states)
                 else:
                     reward = self.env.compute_reward(x, gt)
-                    #temp = x.numpy().reshape(128, 128)* 255
-                    #temp = Image.fromarray(temp).convert('RGB')
-                    #temp.save('bust_5.png')
 
                 return reward, time, x
 
@@ -222,6 +220,7 @@ class Evaluator:
             _, action_dict, pred_rtg = self.predict_action_and_rtg(eval_states, eval_actions, eval_rtg, eval_timesteps, eval_task, time)
                     
     def run(self, eval_paths):
+        total_increment_reward = 0
 
         for evalset in eval_paths:
             if self.eval_type == 'flex':
@@ -230,9 +229,11 @@ class Evaluator:
                 rtg_targ = float(self.rtg_target)
                 vanilla_eval_dataset = EvaluationOptimalDataset(block_size = self.context_length//3, data_dir=evalset, action_dim= 3, rtg_target = rtg_targ)
                 
-            
             eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
             increment_reward = self._generate(eval_loader)
+            total_increment_reward += increment_reward
+        
+        return total_increment_reward
             
 
         

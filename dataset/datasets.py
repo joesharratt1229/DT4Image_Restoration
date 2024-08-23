@@ -184,11 +184,13 @@ class EvaluationOptimalDataset(BaseDataset):
     def __getitem__(self, index):
         fn = self.fns[index]
         task_str = extract_task(fn)
+        print(task_str)
         task = task_str[0] + 'x' + task_str[1:]
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
         mat = loadmat(os.path.join(self.data_dir, fn))
         action_dict = {}
+        action_dict['task'] = task
         action_dict['x0'] = mat['x0']
         action_dict['y0'] = mat['y0']
         action_dict['mask'] = mat['mask']

@@ -143,10 +143,16 @@ class DecisionTransformer(nn.Module):
         self.predict_rtg = nn.Linear(self.embed_dim, 1)
 
         self.apply(self._init_weights)
-
-        self.action_range = OrderedDict({'mu': {'scale': 1, 'shift': 0},
+        
+        if config.mode == 'flex':
+            self.action_range = OrderedDict({'mu': {'scale': 1, 'shift': 0},
+                                            'sigma_d': {'scale': 70 / 255, 'shift': 0},
+                                            'T': {'scale': 1, 'shift': 0} })
+        else:
+            self.action_range = OrderedDict({'T': {'scale': 1, 'shift': 0} ,
                                          'sigma_d': {'scale': 70 / 255, 'shift': 0},
-                                         'T': {'scale': 1, 'shift': 0} })
+                                         'mu': {'scale': 1, 'shift': 0}})
+            
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):

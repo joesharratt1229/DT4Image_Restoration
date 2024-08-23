@@ -18,7 +18,7 @@ from evaluation.eval import Evaluator
 from evaluation.noise import UNetDenoiser2D
 from evaluation.env import PnPEnv
 from evaluation.mcts import run_mcts
-from dataset.datasets import TrainingDataset, EvaluationFlexibleDataset
+from dataset.datasets import TrainingDataset, EvaluationOptimalDataset
 
 PRETRAINED_MODEL_PATH = 'model_3_flex.pt' 
 
@@ -169,13 +169,13 @@ if __name__ == '__main__':
                         max_epochs=args.max_epochs)
             
     elif args.mode == 'eval':
-        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds, mode = 'norm')
         model = DecisionTransformer(model_config)
         model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
-        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_3.pt', action_dim = 3, 
+        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_2.pt', action_dim = 3, 
                              max_timesteps=30, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
         dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
@@ -185,7 +185,7 @@ if __name__ == '__main__':
         evaluate.run(dataset_paths)
         
     elif args.mode == 'flex':
-        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds, mode = 'flex')
         model = DecisionTransformer(model_config)
         model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
@@ -202,35 +202,39 @@ if __name__ == '__main__':
                              max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = rtg, eval_type='flex')
             
-            evaluate.run(dataset_paths)
+            print(f'Test for reward increment: {rtg}\n')
+            
+            average_increment = evaluate.run(dataset_paths)
+            print('\n')
+            print(f'Average increment: {average_increment/6}\n')
         
         
         
     else:
-        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds, mode = 'norm')
         model = DecisionTransformer(model_config)
         model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
-        evaluate = Evaluator(model = model, model_path = PRETRAINED_MODEL_PATH, action_dim = 3, 
+        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_2.pt', action_dim = 3, 
                              max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
-        #dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
-        #                 'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
-        #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
-        
-        dataset_path = 'evaluation/image_dir/vanilla/desired_rtg'
-        vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = args.rtg)
-        eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
         
         
-        total_reward = 0
-        for index, data in enumerate(eval_loader):
-            policy_inputs, mat = data
-            _, _, _, task = policy_inputs
-            reward = run_mcts(evaluate, policy_inputs, mat, task, env, device_type)
-            total_reward += reward
+        dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
+                         'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
+                         'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
+        
+        for path in dataset_paths:
+        
+            vanilla_eval_dataset = EvaluationOptimalDataset(block_size = 6, data_dir=path, action_dim= 3, rtg_target = float(args.rtg))
+            eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
             
-        print(total_reward/7)
             
+            total_reward = 0
+            for index, data in enumerate(eval_loader):
+                policy_inputs, mat = data
+                _, _, _, task = policy_inputs
+                reward = run_mcts(evaluate, policy_inputs, mat, task, env, device_type)
+                total_reward += reward
