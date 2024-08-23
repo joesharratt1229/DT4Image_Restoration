@@ -180,8 +180,6 @@ if __name__ == '__main__':
         #                 'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
         #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
-        
-        #dataset_path = 'evaluation/spi_image_dir/SPISet13_2020/x4'
         dataset_path = 'evaluation/image_dir/vanilla/desired_rtg'
         vanilla_eval_dataset = EvaluationDataset(block_size = 6, data_dir=dataset_path, action_dim= 3, rtg_target = args.rtg)
         eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
