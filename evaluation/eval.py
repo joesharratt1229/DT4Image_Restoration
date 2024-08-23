@@ -2,10 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 
-from evaluation.utils.transformations import calculate_ssim
-from PIL import Image
-
-from dataset.datasets import EvaluationDataset
+from dataset.datasets import EvaluationFlexibleDataset, EvaluationOptimalDataset
 
 class Evaluator:
     def __init__(self,
@@ -17,7 +14,8 @@ class Evaluator:
                  compile,
                  device_type,
                  block_size, 
-                 rtg_target) -> None:
+                 rtg_target,
+                 eval_type = 'norm') -> None:
         
         model_weights = torch.load(model_path, map_location=device_type)
         
@@ -35,6 +33,7 @@ class Evaluator:
         self.device_type = device_type
         self.context_length = block_size//3
         self.rtg_target = rtg_target
+        self.eval_type = eval_type
         
 
     def _get_latest_action(self, action_dict, actions_preds, index):
@@ -225,7 +224,13 @@ class Evaluator:
     def run(self, eval_paths):
 
         for evalset in eval_paths:
-            vanilla_eval_dataset = EvaluationDataset(block_size = self.context_length//3, data_dir=evalset, action_dim= 3, rtg_target = float(self.rtg_target))
+            if self.eval_type == 'flex':
+                vanilla_eval_dataset = EvaluationFlexibleDataset(block_size = self.context_length//3, data_dir=evalset, action_dim= 3, rtg_target = self.rtg_target)
+            else:
+                rtg_targ = float(self.rtg_target)
+                vanilla_eval_dataset = EvaluationOptimalDataset(block_size = self.context_length//3, data_dir=evalset, action_dim= 3, rtg_target = rtg_targ)
+                
+            
             eval_loader = DataLoader(dataset = vanilla_eval_dataset, batch_size=1) 
             increment_reward = self._generate(eval_loader)
             

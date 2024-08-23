@@ -8,19 +8,14 @@ from scipy.io import loadmat
 import h5py
 import re
 
-
-
 concat_pad = lambda x, padding_len: torch.cat([x, torch.zeros(([padding_len] + list(x.shape[1:])), dtype = x.dtype)], dim = 0)
 
+def extract_task(s):
+    pattern = r'\d+_\d+'
+    match = re.search(pattern, s)
+    return match.group()
+
 class BaseDataset(dataset.Dataset):
-    #_tasks = ['2_5.0', '2_10.0', '2_15.0', '4_5.0', '4_10.0', '4_15.0', '8_5.0', '8_10.0', '8_15.0']
-    _tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5', '2x_rtg_1.5', '2x_rtg_3', '2x_rtg_3.5', '2x_rtg_4', '2x_rtg_4.5']
-    _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
-    
-    _min_rtg = -1.8
-    _max_rtg = 5
-    
-    
     def __init__(self, block_size, data_dir, action_dim) -> None:
         super(BaseDataset, self).__init__()
         self.block_size = block_size
@@ -30,28 +25,26 @@ class BaseDataset(dataset.Dataset):
     def __len__(self):
         return len(os.listdir(self.data_dir))
     
-    def _normalize_rtg(self, rtg_arr):
-        minmax_norm = lambda x: (x - BaseDataset._min_rtg)/(BaseDataset._max_rtg - BaseDataset._min_rtg)
-        new_rtg = [minmax_norm(x) for x in rtg_arr]
-        return new_rtg
+    #def _normalize_rtg(self, rtg_arr):
+    #    minmax_norm = lambda x: (x - BaseDataset._min_rtg)/(BaseDataset._max_rtg - BaseDataset._min_rtg)
+    #    new_rtg = [minmax_norm(x) for x in rtg_arr]
+    #    return new_rtg
     
     @abstractmethod
     def __getitem__(self, index):
         pass
-
-
-def extract_task(s):
-    pattern = r'\d+_\d+'
-    match = re.search(pattern, s)
-    return match.group()
     
-
+    
 class TrainingDataset(BaseDataset):
 
-    def __init__(self, block_size, data_dir, action_dim, state_file_path) -> None:
+    def __init__(self, block_size, data_dir, action_dim, state_file_path, tasks, task_tokenizer, min_rtg, max_rtg) -> None:
         super().__init__(block_size, data_dir, action_dim)
         self.state_file_path = state_file_path
-        self.timestep_max = 30   
+        self.timestep_max = 30 
+        self._tasks = tasks 
+        self._task_tokenizer = task_tokenizer 
+        self_min_rtg = min_rtg 
+        self.max_rtg = max_rtg  
     
     def _get_image(self,trajectory):
         traj_path = trajectory[10:]
@@ -139,7 +132,12 @@ class TrainingDataset(BaseDataset):
         return states, actions, rtg, traj_masks, timesteps, task
 
 
-class EvaluationDataset(BaseDataset):
+class EvaluationFlexibleDataset(BaseDataset):
+    _tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5']
+    _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
+    
+    _min_rtg = -1.8
+    _max_rtg = 5
 
     def __init__(self, block_size, data_dir, action_dim, rtg_target) -> None:
         super().__init__(block_size, data_dir, action_dim)
@@ -149,7 +147,7 @@ class EvaluationDataset(BaseDataset):
     
     def __getitem__(self, index):
         fn = self.fns[index]
-        task = 'rtg_'+ str(4.5)
+        task = 'rtg_'+ str(self.rtg_target)
         task = self._task_tokenizer[task]
         task = torch.tensor([task])
         mat = loadmat(os.path.join(self.data_dir, fn))
@@ -164,13 +162,47 @@ class EvaluationDataset(BaseDataset):
 
         x = mat['x0'][..., 0].reshape(1, 128, 128)
         states = x.reshape(1, -1)
-        rtg = (self.rtg_target - EvaluationDataset._min_rtg)/(EvaluationDataset._max_rtg - EvaluationDataset._min_rtg)
+        rtg = (self.rtg_target - EvaluationFlexibleDataset._min_rtg)/(EvaluationFlexibleDataset._max_rtg - EvaluationFlexibleDataset._min_rtg)
         rtg = torch.Tensor([rtg]).reshape(1, 1)
         actions = torch.zeros((self.action_dim))
         return (states, rtg, actions, task), action_dict
         
 
+class EvaluationOptimalDataset(BaseDataset):
+    _tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+    _task_tokenizer = {task: i for i, task in enumerate(_tasks)}
     
+    _min_rtg = -1.08
+    _max_rtg = 16.6
+
+    def __init__(self, block_size, data_dir, action_dim, rtg_target) -> None:
+        super().__init__(block_size, data_dir, action_dim)
+        self.rtg_target = rtg_target
+        self.fns = [im for im in os.listdir(self.data_dir) if im.endswith('.mat')]
+        self.fns.sort()
+    
+    def __getitem__(self, index):
+        fn = self.fns[index]
+        task_str = extract_task(fn)
+        task = task_str[0] + 'x' + task_str[1:]
+        task = self._task_tokenizer[task]
+        task = torch.tensor([task])
+        mat = loadmat(os.path.join(self.data_dir, fn))
+        action_dict = {}
+        action_dict['x0'] = mat['x0']
+        action_dict['y0'] = mat['y0']
+        action_dict['mask'] = mat['mask']
+        action_dict['ATy0'] = mat['ATy0']
+        action_dict['gt'] = mat['gt'] 
+        action_dict['x0'] = np.clip(action_dict['x0'], a_min=0, a_max = None)
+        
+
+        x = mat['x0'][..., 0].reshape(1, 128, 128)
+        states = x.reshape(1, -1)
+        rtg = (self.rtg_target - EvaluationOptimalDataset._min_rtg)/(EvaluationOptimalDataset._max_rtg - EvaluationOptimalDataset._min_rtg)
+        rtg = torch.Tensor([rtg]).reshape(1, 1)
+        actions = torch.zeros((self.action_dim))
+        return (states, rtg, actions, task), action_dict
 
         
 

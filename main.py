@@ -18,9 +18,9 @@ from evaluation.eval import Evaluator
 from evaluation.noise import UNetDenoiser2D
 from evaluation.env import PnPEnv
 from evaluation.mcts import run_mcts
-from dataset.datasets import TrainingDataset, EvaluationDataset
+from dataset.datasets import TrainingDataset, EvaluationFlexibleDataset
 
-PRETRAINED_MODEL_PATH = 'model_3.pt' 
+PRETRAINED_MODEL_PATH = 'model_3_flex.pt' 
 
 logging.basicConfig(filename='outputs.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -82,17 +82,32 @@ def train_model(rank, save_every, ddp, world_size, compile_arg,
     
     #denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
     train_config = TrainerConfig(**train_dict)
-    model_config = DecisionTransformerConfig(block_size = train_config.block_size)
+    model_config = DecisionTransformerConfig(block_size = train_config.block_size, n_embeds = train_config.n_embeds)
     model = DecisionTransformer(model_config)
     optimizer = model.configure_optimizers(train_config)
     #ADD NECESSARY ARGUMENTS FOR TRAIN DATASET
     #env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
+    if args.training_type == 'flexible':
+        tasks = ['rtg_1.5', 'rtg_3', 'rtg_3.5', 'rtg_4', 'rtg_4.5', 'rtg_5']
+        task_tokenizer = {task: i for i, task in enumerate(tasks)}
+        
+        min_rtg = -1.8
+        max_rtg = 5
+    else:
+        tasks = ['2x_5', '2x_10', '2x_15', '4x_5', '4x_10', '4x_15', '8x_5', '8x_10', '8x_15']
+        task_tokenizer = {task: i for i, task in enumerate(tasks)}
+        
+        min_rtg = -1.08
+        max_rtg = 16.6
+    
     dataset = TrainingDataset(block_size = train_config.block_size//3, 
                               data_dir='dataset/data/new_json_folder', 
                               action_dim = model_config.action_dim, 
-                              state_file_path='dataset/data/data_1_410.h5')
-    
-    
+                              state_file_path='dataset/data/data_1_410.h5',
+                              tasks = tasks,
+                              task_tokenizer=task_tokenizer,
+                              min_rtg=min_rtg,
+                              max_rtg=max_rtg)
     dataset_length = dataset.__len__()
     max_steps = int(dataset_length//train_dict['batch_size']) * train_dict['max_epochs']
     
@@ -118,6 +133,7 @@ def train_model(rank, save_every, ddp, world_size, compile_arg,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Arguments for decision transformer - train and evaluation')
     parser.add_argument('--block_size', type = int, required = True)
+    parser.add_argument('--n_embeds', type = int, required = True)
     subparsers = parser.add_subparsers(dest = 'mode', help = 'Modes: train or evaluation')
     train_parser = subparsers.add_parser('train') 
     train_parser.add_argument('--batch_size', type = int, required = True)
@@ -134,6 +150,10 @@ if __name__ == '__main__':
     mcts_parser.add_argument('--rtg', help = 'Desired rtg')
     mcts_parser.add_argument('--max_timesteps', type = int, help = 'Timesteps')
     
+    flexible_parse = subparsers.add_parser('flex')
+    flexible_parse.add_argument('--max_timesteps', type = int, help = 'Timesteps')
+    
+    
 
     args = parser.parse_args()
     if args.mode == 'train':
@@ -149,25 +169,45 @@ if __name__ == '__main__':
                         max_epochs=args.max_epochs)
             
     elif args.mode == 'eval':
-        model_config = DecisionTransformerConfig(block_size = args.block_size)
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
         model = DecisionTransformer(model_config)
         model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
-        evaluate = Evaluator(model = model, model_path = PRETRAINED_MODEL_PATH, action_dim = 3, 
-                             max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
+        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_3.pt', action_dim = 3, 
+                             max_timesteps=30, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
-        #dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
-        #                 'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
-        #                 'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
+        dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
+                         'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/',
+                         'evaluation/image_dir/vanilla/2_15/', 'evaluation/image_dir/vanilla/2_10/', 'evaluation/image_dir/vanilla/2_5/']
         
-        
-        dataset_paths = ['evaluation/image_dir/vanilla/2_10']
         evaluate.run(dataset_paths)
         
+    elif args.mode == 'flex':
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
+        model = DecisionTransformer(model_config)
+        model = model.to(device_type)
+        denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
+        env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
+        
+        dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
+                         'evaluation/image_dir/vanilla/8_15/', 'evaluation/image_dir/vanilla/8_10/', 'evaluation/image_dir/vanilla/8_5/']
+        
+        
+        rtgs = [1.5, 3, 3.5, 4, 4.5]
+        
+        for rtg in rtgs:
+            evaluate = Evaluator(model = model, model_path = 'checkpoints/model_3_flex.pt', action_dim = 3, 
+                             max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
+                             block_size=args.block_size, rtg_target = rtg, eval_type='flex')
+            
+            evaluate.run(dataset_paths)
+        
+        
+        
     else:
-        model_config = DecisionTransformerConfig(block_size = args.block_size)
+        model_config = DecisionTransformerConfig(block_size = args.block_size, n_embeds = args.n_embeds)
         model = DecisionTransformer(model_config)
         model = model.to(device_type)
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')

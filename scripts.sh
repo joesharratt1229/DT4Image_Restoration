@@ -10,3 +10,4 @@ python main.py --block_size 18 eval --rtg 10 --max_timesteps 30
 #mcts script
 
 #fleixble script
+python main.py --block_size 18 --n_embeds 6 flex --max_timesteps 30

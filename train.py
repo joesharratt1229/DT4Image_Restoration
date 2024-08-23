@@ -3,25 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import Dataset
-from torch.utils.data.distributed import DistributedSampler
-import torch.multiprocessing as mp
 
-import argparse 
-import os
-from contextlib import nullcontext
 import time
 import math
-from typing import Optional
 
 import wandb
 import logging
 
 
-from transformer.decision_transformer import DecisionTransformer, DecisionTransformerConfig
-from dataset.datasets import TrainingDataset, EvaluationDataset
-from evaluation.env import PnPEnv
-from evaluation.noise import UNetDenoiser2D
 
 """
 In this implementatiion not going to scale rtgs or rtg targets. If doesnt work properly may look to scale rtg targets between 0 and 1.
