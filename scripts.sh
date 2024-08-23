@@ -6,3 +6,7 @@ python main.py --block_size 18 train --batch_size 48 --ddp --compile --save_ever
 
 #eval script
 python main.py --block_size 18 eval --rtg 10 --max_timesteps 30
+
+#mcts script
+
+#fleixble script
