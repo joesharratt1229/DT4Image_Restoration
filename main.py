@@ -175,7 +175,7 @@ if __name__ == '__main__':
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
-        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_2.pt', action_dim = 3, 
+        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_experiment_2.pt', action_dim = 3, 
                              max_timesteps=30, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
         dataset_paths = ['evaluation/image_dir/vanilla/4_15/', 'evaluation/image_dir/vanilla/4_10/', 'evaluation/image_dir/vanilla/4_5/',
@@ -198,7 +198,7 @@ if __name__ == '__main__':
         rtgs = [1.5, 3, 3.5, 4, 4.5]
         
         for rtg in rtgs:
-            evaluate = Evaluator(model = model, model_path = 'checkpoints/model_3_flex.pt', action_dim = 3, 
+            evaluate = Evaluator(model = model, model_path = 'checkpoints/model_experiment_1.pt', action_dim = 3, 
                              max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = rtg, eval_type='flex')
             
@@ -217,7 +217,7 @@ if __name__ == '__main__':
         denoiser = UNetDenoiser2D(ckpt_path='evaluation/pretrained/unet-nm.pt')
         env = PnPEnv(max_episode_step=30, denoiser = denoiser, device_type = device_type)
 
-        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_2.pt', action_dim = 3, 
+        evaluate = Evaluator(model = model, model_path = 'checkpoints/model_experiment_2.pt', action_dim = 3, 
                              max_timesteps=args.max_timesteps, env = env, compile = False, device_type=device_type, 
                              block_size=args.block_size, rtg_target = args.rtg)
         
