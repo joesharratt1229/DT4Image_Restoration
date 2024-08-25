@@ -21,7 +21,7 @@ python main.py --block_size 18 train --batch_size 48 --ddp --compile --save_ever
 ```
 
 # Evaluation 
-We have conducted two experiments, thus there are two models to evaluate they both can be found [here](https://uob-my.sharepoint.com/my?id=%2Fpersonal%2Fbi22854%5Fbristol%5Fac%5Fuk%2FDocuments%2FDecisionTransformer4PNP%2Fmodels) and are named appropriately. Place them in a `checkpoints` folder. To download the evaluation data follow this [link](https://uob-my.sharepoint.com/my?id=%2Fpersonal%2Fbi22854%5Fbristol%5Fac%5Fuk%2FDocuments%2FDecisionTransformer4PNP%2Fmodels). Put this data in a `evaluation/image_dir` folder. It is also necessary to download the weights to U-NET denoiser used as regulariser in the PnP algorithm which can be downloaded from [here](https://uob-my.sharepoint.com/my?id=%2Fpersonal%2Fbi22854%5Fbristol%5Fac%5Fuk%2FDocuments%2FDecisionTransformer4PNP%2Fmodels)
+We have conducted two experiments, thus there are two models to evaluate they both can be found [here](https://1drv.ms/f/s!AvB5JAwBI_ZLbn_T9Y2DzVubO5c?e=EbDPUh) and are named appropriately. Place them in a `checkpoints` folder. To download the evaluation data follow this [link](https://1drv.ms/f/s!AvB5JAwBI_ZLgUE418feZOYQd_lI?e=EbFs1o) Put this data in a `evaluation/image_dir` folder. It is also necessary to download the weights to U-NET denoiser used as regulariser in the PnP algorithm which can be downloaded from [here](https://1drv.ms/f/s!AvB5JAwBI_ZLgSfr4VRXJgxRL2wJ?e=SoguCL)
 
 To evaluate experiment 1, run the following command:
 ```
